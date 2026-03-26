@@ -1,0 +1,23 @@
+#!/bin/bash
+
+# current folder name
+cwd=$(basename "$PWD")
+
+# tmux sessions
+readarray -t sessions < <(tmux list-sessions | awk '{print $1}')
+
+# tmux session exist
+sess_available=0
+
+for session in "${sessions[@]}"; do
+  if [[ ${session::-1} == "${cwd}" ]]; then
+    sess_available=1
+    break;
+  fi
+done
+
+if [[ $sess_available -ne 0 ]]; then
+  tmux a -t "${cwd}"
+else
+  tmux new -s"${cwd}"
+fi
