@@ -58,6 +58,12 @@ return {
     end,
   },
 
+  {
+    'seblyng/roslyn.nvim',
+    ft = 'cs',
+    opts = {},
+  },
+
   -- load luasnips + cmp related in insert mode only
   {
     'hrsh7th/nvim-cmp',
@@ -140,6 +146,10 @@ return {
     opts = function()
       return require 'configs.treesitter'
     end,
+  },
+
+  {
+    'tpope/vim-fugitive',
   },
 
   {
