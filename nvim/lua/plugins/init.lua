@@ -154,7 +154,7 @@ return {
 
   {
     'norcalli/nvim-colorizer.lua',
-    ft = { 'json' },
+    ft = { 'json', 'css' },
     config = function()
       require('colorizer').setup {
         'json',
