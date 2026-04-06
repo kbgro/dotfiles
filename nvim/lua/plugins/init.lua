@@ -153,6 +153,17 @@ return {
   },
 
   {
+    'norcalli/nvim-colorizer.lua',
+    ft = { 'json' },
+    config = function()
+      require('colorizer').setup {
+        'json',
+        'css',
+      }
+    end,
+  },
+
+  {
     'vimwiki/vimwiki',
     init = function()
       require 'configs.docs'
