@@ -17,3 +17,7 @@ vim.api.nvim_create_autocmd({ "VimResized" }, {
         vim.cmd("tabnext " .. current_tab)
     end,
 })
+
+vim.api.nvim_create_user_command("Glow", function()
+    vim.cmd("terminal glow " .. vim.fn.expand("%"))
+end, {})
