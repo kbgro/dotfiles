@@ -40,6 +40,7 @@ local kind_icons = {
 }
 
 local cmp = require 'cmp'
+local luasnip = require 'luasnip'
 
 return {
   snippet = {

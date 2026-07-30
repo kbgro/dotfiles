@@ -101,6 +101,14 @@ M.defaults = function()
     },
   })
 
+  vim.lsp.config('clangd', {
+    cmd = {
+      'clangd',
+      '--compile-commands-dir=' .. vim.fn.getcwd() .. '/build', -- change if compile_commands.json isn't in cwd
+    },
+    capabilities = M.capabilities,
+  })
+
   require('roslyn').setup {
     on_attach = M.on_attach,
     capabilities = M.capabilities,

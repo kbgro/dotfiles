@@ -5,7 +5,20 @@
 vim.keymap.set('n', '<leader>e', ':NvimTreeToggle<CR>', { desc = 'Toggle File Explorer' })
 
 return {
-  filters = { dotfiles = false },
+  filters = {
+    dotfiles = false,
+    custom = {
+      'bin',
+      'obj',
+      'node_modules',
+      '.git',
+      '.vscode',
+      '*.log',
+      '*.tmp',
+      '.DS_Store',
+      'coverage',
+    },
+  },
   disable_netrw = true,
   hijack_cursor = true,
   sync_root_with_cwd = true,
