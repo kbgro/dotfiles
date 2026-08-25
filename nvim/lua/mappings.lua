@@ -46,3 +46,6 @@ vim.keymap.set("n", "<leader>rr", function()
   print("Neovim config reloaded")
 end, { desc = "Reload Neovim config" })
 
+-- Glow
+vim.keymap.set("n", "<leader>mg", "<cmd>Glow<cr>", { desc = "Preview Markdown with Glow" })
+vim.keymap.set("t", "<esc><esc>", "<C-\\><C-n>")

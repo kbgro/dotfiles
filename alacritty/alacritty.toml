@@ -14,9 +14,11 @@ blinking = "On"
 
 [font]
 size = 13.0
-
-[font.normal]
-family = "JetBrainsMono Nerd Font"
+# normal = { family = "JetBrainsMono Nerd Font" }
+normal = { family = "JetBrainsMono NF" }
+bold = { family = "JetBrainsMono Nerd Font" }
+italic = { family = "JetBrainsMono Nerd Font" }
+bold_italic = { family = "JetBrainsMono Nerd Font" }
 
 [scrolling]
 history = 10000
@@ -35,3 +37,6 @@ columns = 150
 lines = 34
 
 [keyboard]
+
+[env]
+TERM = "xterm-256color"

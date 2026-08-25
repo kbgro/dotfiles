@@ -40,6 +40,7 @@ local kind_icons = {
 }
 
 local cmp = require 'cmp'
+local luasnip = require 'luasnip'
 
 return {
   snippet = {
@@ -90,6 +91,7 @@ return {
     end,
   },
   sources = {
+    { name = 'nvim_lsp' },
     { name = 'luasnip' },
     { name = 'buffer' },
     { name = 'nvim_lua' },

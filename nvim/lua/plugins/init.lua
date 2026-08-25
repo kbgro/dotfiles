@@ -58,6 +58,12 @@ return {
     end,
   },
 
+  {
+    'seblyng/roslyn.nvim',
+    ft = 'cs',
+    opts = {},
+  },
+
   -- load luasnips + cmp related in insert mode only
   {
     'hrsh7th/nvim-cmp',
@@ -139,6 +145,21 @@ return {
     main = 'nvim-treesitter.configs', -- Sets main module to use for opts
     opts = function()
       return require 'configs.treesitter'
+    end,
+  },
+
+  {
+    'tpope/vim-fugitive',
+  },
+
+  {
+    'norcalli/nvim-colorizer.lua',
+    ft = { 'json', 'css' },
+    config = function()
+      require('colorizer').setup {
+        'json',
+        'css',
+      }
     end,
   },
 

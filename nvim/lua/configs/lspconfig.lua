@@ -8,6 +8,17 @@ local M = {}
 -- 🔑 Keymaps
 -- ======================
 M.on_attach = function(event)
+  local client = vim.lsp.get_client_by_id(event.data.client_id)
+  if not client then
+    return
+  end
+
+  local bufname = vim.api.nvim_buf_get_name(event.buf)
+  if client.name == 'bashls' and bufname:match '/%.env' then
+    client.stop()
+    return
+  end
+
   local map = function(keys, func, desc, mode)
     mode = mode or 'n'
     vim.keymap.set(mode, keys, func, {
@@ -52,7 +63,12 @@ M.defaults = function()
   })
 
   -- ✅ Mason
-  require('mason').setup()
+  require('mason').setup {
+    registries = {
+      'github:Crashdummyy/mason-registry',
+      'github:mason-org/mason-registry',
+    },
+  }
 
   require('mason-lspconfig').setup {
     ensure_installed = {
@@ -85,6 +101,19 @@ M.defaults = function()
     },
   })
 
+  vim.lsp.config('clangd', {
+    cmd = {
+      'clangd',
+      '--compile-commands-dir=' .. vim.fn.getcwd() .. '/build', -- change if compile_commands.json isn't in cwd
+    },
+    capabilities = M.capabilities,
+  })
+
+  require('roslyn').setup {
+    on_attach = M.on_attach,
+    capabilities = M.capabilities,
+  }
+
   -- Other servers (simple setup)
   local servers = { 'pyright', 'ts_ls', 'bashls', 'jsonls' }
 
@@ -103,6 +132,7 @@ M.defaults = function()
     'ts_ls',
     'bashls',
     'jsonls',
+    'roslyn',
   }
 end
 
