@@ -37,3 +37,12 @@ vim.pack.add({
 })
 
 require("configs.tree-sitter")
+
+-- FZF
+--
+
+vim.pack.add({
+  "https://github.com/ibhagwan/fzf-lua",
+})
+
+require("configs.fzf")
