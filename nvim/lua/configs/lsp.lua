@@ -14,6 +14,9 @@ require("mason-lspconfig").setup({
   ensure_installed = lsp_servers,
 })
 
+require("roslyn").setup({})
+vim.lsp.enable("roslyn")
+
 vim.lsp.config("lua_ls", {
   settings = {
     Lua = {
