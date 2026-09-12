@@ -46,3 +46,38 @@ vim.pack.add({
 })
 
 require("configs.fzf")
+
+-- LSP
+--
+
+vim.pack.add({
+  "https://github.com/mason-org/mason.nvim",
+  "https://github.com/neovim/nvim-lspconfig",
+  "https://github.com/mason-org/mason-lspconfig.nvim",
+})
+
+require("configs.lsp")
+
+-- Completion
+--
+
+vim.pack.add({
+  "https://github.com/hrsh7th/nvim-cmp",
+  "https://github.com/hrsh7th/cmp-nvim-lsp",
+  "https://github.com/hrsh7th/cmp-buffer",
+  "https://github.com/hrsh7th/cmp-path",
+  "https://github.com/L3MON4D3/LuaSnip",
+  "https://github.com/saadparwaiz1/cmp_luasnip",
+  "https://github.com/rafamadriz/friendly-snippets",
+})
+
+require("configs.cmp")
+
+-- Comments
+--
+
+vim.pack.add({
+  "https://github.com/numToStr/Comment.nvim",
+})
+
+require("configs.comment")
