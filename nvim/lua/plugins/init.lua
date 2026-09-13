@@ -84,3 +84,15 @@ vim.pack.add({
 })
 
 require("configs.comment")
+
+-- Brackets & Surround
+--
+vim.pack.add({
+  "https://github.com/windwp/nvim-autopairs",
+  {
+    src = "https://github.com/kylechui/nvim-surround",
+    version = vim.version.range("4.x"),
+  }
+})
+
+require("configs.pairs")

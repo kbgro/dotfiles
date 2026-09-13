@@ -11,5 +11,5 @@ local fzf = require("fzf-lua")
 
 vim.keymap.set("n", "<leader>sf", fzf.files, { desc = "Search Files" })
 vim.keymap.set("n", "<leader>sg", fzf.live_grep, { desc = "Search by Grep" })
-vim.keymap.set("n", "<leader>sb", fzf.buffers, { desc = "Search Buffers" })
+vim.keymap.set("n", "<leader><space>", fzf.buffers, { desc = "Search Buffers" })
 
