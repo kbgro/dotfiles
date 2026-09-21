@@ -33,6 +33,12 @@ require("tokyonight").setup ({
     hl.DiagnosticVirtualTextWarn.bg = 'none'
     hl.DiagnosticVirtualTextInfo.bg = 'none'
     hl.DiagnosticVirtualTextHint.bg = 'none'
+
+    -- highlight c# record as a type
+    hl["@lsp.type.recordClass.cs"] = {
+      link = "@type",
+      -- link = "Type",
+    }
   end,
 })
 
