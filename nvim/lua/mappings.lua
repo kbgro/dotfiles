@@ -34,3 +34,15 @@ vim.keymap.set("n", "<leader>rr", function()
   vim.cmd("source $MYVIMRC")
   print("Neovim config reloaded")
 end, { desc = "Reload Neovim config" })
+
+
+-- quickfix
+--
+vim.keymap.set('n', '<leader>cc', function()
+  local qf_winid = vim.fn.getqflist({ winid = 0 }).winid
+  if qf_winid > 0 then
+    vim.cmd('cclose')
+  else
+    vim.cmd('copen')
+  end
+end, { desc = 'Toggle Quickfix' })
