@@ -1,0 +1,186 @@
+.system-status-icon {
+    color: #ffffff;
+}
+
+/* ─────────────────────────────────────────────
+ * Timer menu header
+ * ───────────────────────────────────────────── */
+
+.timer-menu-header {
+    width: 350px;
+    padding: 8px 4px;
+}
+
+.timer-menu-title {
+    font-size: 16px;
+    font-weight: bold;
+}
+
+.timer-menu-start-button {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border-radius: 999px;
+    background-color: rgba(255, 255, 255, 0.20);
+}
+
+.timer-menu-start-button:hover {
+    background-color: rgba(255, 255, 255, 0.10);
+}
+
+.timer-menu-start-button:active {
+    background-color: rgba(255, 255, 255, 0.16);
+}
+
+.timer-menu-start-icon {
+    color: white;
+    -st-icon-color: white;
+}
+
+
+/* ─────────────────────────────────────────────
+ * Timer cards
+ * ───────────────────────────────────────────── */
+
+.timer-menu-entries {
+    spacing: 6px;
+}
+
+.timer-card {
+    width: 350px;
+    padding: 8px;
+    spacing: 8px;
+    border-radius: 8px;
+    background-color: rgba(255, 255, 255, 0.06);
+}
+
+.timer-card-icon {
+    icon-size: 20px;
+}
+
+.timer-card-time {
+    font-size: 15px;
+    font-weight: 500;
+    x-expand: true;
+}
+
+
+/* ─────────────────────────────────────────────
+ * Timer card buttons
+ * ───────────────────────────────────────────── */
+
+.timer-card-lap-button,
+.timer-card-action-button,
+.timer-card-edit-button {
+    padding: 4px 8px;
+    border-radius: 999px;
+    background-color: transparent;
+}
+
+.timer-card-lap-button:hover,
+.timer-card-action-button:hover,
+.timer-card-edit-button:hover {
+    background-color: rgba(255, 255, 255, 0.10);
+}
+
+.timer-card-lap-button:active,
+.timer-card-action-button:active,
+.timer-card-edit-button:active {
+    background-color: rgba(255, 255, 255, 0.16);
+}
+
+
+/* ─────────────────────────────────────────────
+ * Lap button
+ * ───────────────────────────────────────────── */
+
+.timer-card-lap-box {
+    spacing: 8px;
+}
+
+.timer-card-lap-label {
+    font-size: 16px;
+    font-weight: 500;
+}
+
+.timer-card-lap-icon {
+    -st-icon-color: white;
+}
+
+
+/* ─────────────────────────────────────────────
+ * Pause / Stop buttons
+ * ───────────────────────────────────────────── */
+
+.timer-card-action-button {
+    padding: 8px;
+}
+
+.timer-card-action-icon {
+    -st-icon-color: white;
+}
+
+
+/* ─────────────────────────────────────────────
+ * Edit button
+ * ───────────────────────────────────────────── */
+
+.timer-card-edit-button {
+    padding: 8px;
+}
+
+.timer-card-edit-icon {
+    -st-icon-color: white;
+}
+
+.timer-card-delete-button {
+    padding: 4px 8px;
+    border-radius: 999px;
+    background-color: transparent;
+}
+
+.timer-card-delete-button:hover {
+    background-color: rgba(255, 80, 80, 0.20);
+}
+
+.timer-card-delete-button:active {
+    background-color: rgba(255, 80, 80, 0.30);
+}
+
+.timer-card-delete-icon {
+    -st-icon-color: rgba(255, 255, 255, 0.5);
+}
+
+.timer-card-delete-button:hover .timer-card-delete-icon {
+    -st-icon-color: rgba(255, 255, 255, 1);
+}
+
+
+/* ─────────────────────────────────────────────
+ * Panel button
+ * ───────────────────────────────────────────── */
+
+.timer-panel-live {
+    font-size: 14px;
+    font-weight: 500;
+    padding: 2px 8px;
+    border-radius: 4px;
+    color: rgba(255, 80, 80, 1);
+    -st-icon-color: rgba(255, 80, 80, 1);
+}
+
+.timer-panel-paused {
+    font-size: 14px;
+    font-weight: 500;
+    padding: 2px 8px;
+    border-radius: 4px;
+    color: rgba(255, 200, 50, 1);
+    -st-icon-color: rgba(255, 200, 50, 1);
+}
+
+.timer-panel-more {
+    font-size: 14px;
+    font-weight: 500;
+    padding: 2px 8px;
+    color: rgba(255, 255, 255, 0.7);
+}
