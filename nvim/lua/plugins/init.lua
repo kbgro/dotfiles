@@ -96,3 +96,11 @@ vim.pack.add({
 })
 
 require("configs.pairs")
+
+-- Docs
+--
+vim.pack.add({
+  "https://github.com/vimwiki/vimwiki",
+})
+
+require("configs.docs")
