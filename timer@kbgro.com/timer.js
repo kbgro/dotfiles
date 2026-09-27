@@ -10,6 +10,7 @@ export class Timer {
         elapsed = 0,
         status = 'idle',
         laps = [],
+        notes = '',
     }) {
         this.id = id;
         this.name = name;
@@ -35,6 +36,8 @@ export class Timer {
 
         // Stopwatch only
         this.laps = laps;
+
+        this.notes = notes;
     }
 
     // ─────────────────────────────────────────────
@@ -171,21 +174,22 @@ export class Timer {
     // Persistence
     // ─────────────────────────────────────────────
 
-    toJSON() {
-        return {
-            id: this.id,
-            name: this.name,
-            icon: this.icon,
-            type: this.type,
+     toJSON() {
+         return {
+             id: this.id,
+             name: this.name,
+             icon: this.icon,
+             type: this.type,
 
-            duration: this.duration,
-            endTime: this.endTime,
-            startTime: this.startTime,
+             duration: this.duration,
+             endTime: this.endTime,
+             startTime: this.startTime,
 
-            elapsed: this._elapsed,
-            status: this.status,
+             elapsed: this._elapsed,
+             status: this.status,
 
-            laps: this.laps,
-        };
-    }
+             laps: this.laps,
+             notes: this.notes,
+         };
+     }
 }

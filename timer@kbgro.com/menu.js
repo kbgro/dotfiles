@@ -120,10 +120,11 @@ export class TimerMenu {
 
     _startStopwatch() {
         const timer = this._store.add({
-            id: `stopwatch-${Date.now()}`,
-            name: 'Stopwatch',
+            id: `${Date.now()}`,
+            name: '',
             icon: 'alarm-symbolic',
             type: 'stopwatch',
+            notes: '',
         });
 
         timer.start();

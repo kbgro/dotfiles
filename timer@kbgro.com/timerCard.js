@@ -1,5 +1,6 @@
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
+import * as ModalDialog from 'resource:///org/gnome/shell/ui/modalDialog.js';
 
 export class TimerCard {
     constructor(timer, store) {
@@ -139,7 +140,7 @@ export class TimerCard {
         this._editButton.set_accessible_name('Edit timer');
 
         this._editButton.connect('clicked', () => {
-            console.log('Edit timer');
+            this._showEditDialog();
         });
 
 // ─────────────────────────────────────────
@@ -249,6 +250,72 @@ this._container.add_child(this._deleteButton);
         return result;
     }
 
+    _showEditDialog() {
+        if (this._editDialog) {
+            this._editDialog.close();
+            this._editDialog = null;
+        }
+
+        const timer = this._timer;
+
+        const dialog = new ModalDialog.ModalDialog({
+            destroyOnClose: true,
+            styleClass: 'timer-edit-dialog',
+            shellReactive: true,
+        });
+
+        const content = new St.BoxLayout({
+            vertical: true,
+            x_expand: true,
+            style_class: 'timer-edit-content',
+        });
+
+const nameEntry = new St.Entry({
+            text: timer.name || '',
+            hint_text: 'Title',
+            style_class: 'timer-edit-entry',
+            x_expand: true,
+            can_focus: true,
+        });
+        const notesEntry = new St.Entry({
+            text: timer.notes || '',
+            hint_text: 'Notes',
+            style_class: 'timer-edit-entry timer-edit-notes',
+            x_expand: true,
+            can_focus: true,
+        });
+
+        content.add_child(nameEntry);
+        content.add_child(notesEntry);
+
+        dialog.contentLayout.add_child(content);
+
+        dialog.addButton({
+            label: 'Cancel',
+            action: () => {
+                dialog.close();
+            },
+            key: Clutter.KEY_Escape,
+        });
+
+        dialog.addButton({
+            label: 'Save',
+            action: () => {
+                timer.name = nameEntry.text;
+                timer.notes = notesEntry.text;
+                this._store.update(timer);
+                this.update();
+                dialog.close();
+            },
+            key: Clutter.KEY_Return,
+            isDefault: true,
+        });
+
+        dialog.open(global.get_current_time());
+        this._editDialog = dialog;
+        dialog.setInitialKeyFocus(nameEntry);
+    }
+
     get actor() {
         return this._container;
     }
@@ -259,6 +326,8 @@ this._container.add_child(this._deleteButton);
         this._stopButton?.destroy();
         this._editButton?.destroy();
         this._deleteButton?.destroy();
+        this._editDialog?.close();
+        this._editDialog?.destroy();
 
         this._icon?.destroy();
         this._pauseIcon?.destroy();
@@ -270,6 +339,7 @@ this._container.add_child(this._deleteButton);
         this._stopButton = null;
         this._editButton = null;
         this._deleteButton = null;
+        this._editDialog = null;
 
         this._icon = null;
         this._pauseIcon = null;
