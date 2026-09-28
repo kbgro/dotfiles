@@ -14,16 +14,20 @@ export class TimerCard {
     _build() {
         this._container = new St.BoxLayout({
             style_class: 'timer-card',
+            vertical: true,
             x_expand: true,
         });
 
-        // Timer icon
+        // Row 1: [icon][time]              [action buttons]
+        this._row1 = new St.BoxLayout({
+            x_expand: true,
+        });
+
         this._icon = new St.Icon({
             icon_name: 'alarm-symbolic',
             style_class: 'timer-card-icon',
         });
 
-        // Time
         this._timeLabel = new St.Label({
             text: '0s',
             style_class: 'timer-card-time',
@@ -31,10 +35,17 @@ export class TimerCard {
             y_align: Clutter.ActorAlign.CENTER,
         });
 
-        // ─────────────────────────────────────────
-        // Lap button
-        // ─────────────────────────────────────────
+        const leftBox = new St.BoxLayout({
+            x_expand: true,
+        });
+        leftBox.add_child(this._icon);
+        leftBox.add_child(this._timeLabel);
 
+        const rightBox = new St.BoxLayout({
+            x_align: Clutter.ActorAlign.END,
+        });
+
+        // Lap button
         this._lapButton = new St.Button({
             style_class: 'timer-card-lap-button',
             can_focus: true,
@@ -68,10 +79,7 @@ export class TimerCard {
             this.update();
         });
 
-        // ─────────────────────────────────────────
         // Pause / Resume button
-        // ─────────────────────────────────────────
-
         this._pauseButton = new St.Button({
             style_class: 'timer-card-action-button',
             can_focus: true,
@@ -96,10 +104,7 @@ export class TimerCard {
             this.update();
         });
 
-        // ─────────────────────────────────────────
         // Stop button
-        // ─────────────────────────────────────────
-
         this._stopButton = new St.Button({
             style_class: 'timer-card-action-button',
             can_focus: true,
@@ -121,10 +126,7 @@ export class TimerCard {
             this.update();
         });
 
-        // ─────────────────────────────────────────
         // Edit button
-        // ─────────────────────────────────────────
-
         this._editButton = new St.Button({
             style_class: 'timer-card-edit-button',
             can_focus: true,
@@ -143,45 +145,75 @@ export class TimerCard {
             this._showEditDialog();
         });
 
-// ─────────────────────────────────────────
-// Delete button
-// ─────────────────────────────────────────
+        // Delete button
+        this._deleteButton = new St.Button({
+            style_class: 'timer-card-delete-button',
+            can_focus: true,
+            visible: false,
+        });
 
-this._deleteButton = new St.Button({
-    style_class: 'timer-card-delete-button',
-    can_focus: true,
-    visible: false,
-});
+        const delIcon = new St.Icon({
+            icon_name: 'edit-delete-symbolic',
+            icon_size: 16,
+            style_class: 'timer-card-delete-icon',
+        });
 
-const delIcon = new St.Icon({
-    icon_name: 'edit-delete-symbolic',
-    icon_size: 16,
-    style_class: 'timer-card-delete-icon',
-});
+        this._deleteButton.set_child(delIcon);
+        this._deleteButton.set_accessible_name('Delete timer');
 
-this._deleteButton.set_child(delIcon);
-this._deleteButton.set_accessible_name('Delete timer');
+        this._deleteButton.connect('clicked', () => {
+            this._store.remove(this._timer);
+        });
 
-this._deleteButton.connect('clicked', () => {
-    this._store.remove(this._timer);
-});
+        rightBox.add_child(this._lapButton);
+        rightBox.add_child(this._pauseButton);
+        rightBox.add_child(this._stopButton);
+        rightBox.add_child(this._editButton);
+        rightBox.add_child(this._deleteButton);
 
-// ─────────────────────────────────────────
-// Layout
-// ─────────────────────────────────────────
+        this._row1.add_child(leftBox);
+        this._row1.add_child(rightBox);
 
-this._container.add_child(this._icon);
-this._container.add_child(this._timeLabel);
-this._container.add_child(this._lapButton);
-this._container.add_child(this._pauseButton);
-this._container.add_child(this._stopButton);
-this._container.add_child(this._editButton);
-this._container.add_child(this._deleteButton);
+        // Row 2: [title]                   [starttime]
+        this._row2 = new St.BoxLayout({
+            x_expand: true,
+        });
+
+        this._titleLabel = new St.Label({
+            text: this._timer.name || '',
+            style_class: 'timer-card-title',
+            x_expand: true,
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+
+        this._startTimeLabel = new St.Label({
+            text: '',
+            style_class: 'timer-card-starttime',
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+
+        this._row2.add_child(this._titleLabel);
+        this._row2.add_child(this._startTimeLabel);
+
+        this._container.add_child(this._row1);
+        this._container.add_child(this._row2);
     }
 
     update() {
         this._timeLabel.text =
             this._formatTime(this._timer.elapsed);
+
+        this._titleLabel.text = this._timer.name || '';
+
+        if (this._timer.startTime) {
+            const d = new Date(this._timer.startTime);
+            this._startTimeLabel.text = d.toLocaleTimeString([], {
+                hour: '2-digit',
+                minute: '2-digit',
+            });
+        } else {
+            this._startTimeLabel.text = '';
+        }
 
         this._updatePauseButton();
         this._updateActions();
@@ -270,7 +302,7 @@ this._container.add_child(this._deleteButton);
             style_class: 'timer-edit-content',
         });
 
-const nameEntry = new St.Entry({
+        const nameEntry = new St.Entry({
             text: timer.name || '',
             hint_text: 'Title',
             style_class: 'timer-edit-entry',
@@ -332,6 +364,10 @@ const nameEntry = new St.Entry({
         this._icon?.destroy();
         this._pauseIcon?.destroy();
         this._timeLabel?.destroy();
+        this._titleLabel?.destroy();
+        this._startTimeLabel?.destroy();
+        this._row1?.destroy();
+        this._row2?.destroy();
         this._container?.destroy();
 
         this._lapButton = null;
@@ -344,6 +380,10 @@ const nameEntry = new St.Entry({
         this._icon = null;
         this._pauseIcon = null;
         this._timeLabel = null;
+        this._titleLabel = null;
+        this._startTimeLabel = null;
+        this._row1 = null;
+        this._row2 = null;
         this._container = null;
 
         this._timer = null;
