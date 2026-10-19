@@ -1,0 +1,381 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+SCRIPT_PATH=$(readlink -f -- "$0")
+
+# ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
+
+# Set to 0 to hide the table header.
+SHOW_HEADER=1
+
+# Preview width in fzf.
+PREVIEW_WIDTH='68%'
+
+# Visible width of the container-name column, including its icon.
+NAME_WIDTH=34
+
+# Nerd Font icons.
+ICON_CONTAINER='󰡨'
+ICON_RUNNING='●'
+ICON_STOPPED='○'
+ICON_MOUNT='󰆼'
+
+# ANSI colors.
+C_RESET=$'\033[0m'
+C_BOLD=$'\033[1m'
+C_DIM=$'\033[2m'
+C_GREEN=$'\033[32m'
+C_RED=$'\033[31m'
+C_CYAN=$'\033[36m'
+
+# Assumed terminal display width of the icons in the picker font.
+ICON_CONTAINER_CELLS=1
+
+# These indicators render as one terminal cell in the status picker font.
+ICON_MOUNT_CELLS=1
+
+# Visible width of the published-port column.
+PORT_WIDTH=24
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+require_command() {
+    if ! command -v "$1" >/dev/null 2>&1; then
+        printf 'Required command not found: %s\n' "$1" >&2
+        exit 1
+    fi
+}
+
+require_command docker
+require_command fzf
+
+pause() {
+    printf '\n'
+    read -r -p 'Press Enter to continue...' _ || true
+}
+
+confirm() {
+    local answer
+    read -r -p "$1 [y/N] " answer || return 1
+    [[ "$answer" =~ ^([yY]|[yY][eE][sS])$ ]]
+}
+
+# ---------------------------------------------------------------------------
+# Container list
+#
+# Output format:
+#   container-id<TAB>colored display row
+#
+# The ID is hidden in fzf but remains available for actions and preview.
+# ---------------------------------------------------------------------------
+
+list_containers() {
+    local containers
+    local id name state status image ports mount_count
+    local state_text mount_text port_text
+    local state_color mount_color port_color
+    local name_width short_name short_ports host_port binding
+    local -a port_bindings
+    local -A seen_ports=()
+
+    if ! containers=$(docker ps -a \
+        --format '{{.ID}}|{{.Names}}|{{.State}}|{{.Status}}|{{.Image}}|{{.Ports}}'); then
+        printf 'Unable to list containers. Check Docker access.\n' >&2
+        return 1
+    fi
+
+    [[ -n "$containers" ]] || return 0
+
+    # Reserve space for the icon and the space following it.
+    name_width=$((NAME_WIDTH - ICON_CONTAINER_CELLS - 1))
+
+    while IFS='|' read -r id name state status image ports; do
+        [[ -n "$id" ]] || continue
+
+        mount_count=$(docker inspect \
+            --format '{{len .Mounts}}' "$id" 2>/dev/null || printf '0')
+
+        # State column.
+        if [[ "$state" == running ]]; then
+            state_text="$ICON_RUNNING RUN"
+            state_color=$C_GREEN
+        else
+            state_text="$ICON_STOPPED STOP"
+            state_color=$C_RED
+        fi
+
+        # Mount column.
+        if [[ "$mount_count" =~ ^[0-9]+$ ]] && (( mount_count > 0 )); then
+            mount_text="$ICON_MOUNT"
+            mount_color=$C_CYAN
+        else
+            mount_text='-'
+            mount_color=$C_DIM
+        fi
+
+        # Published-port column. Show active mappings only for running containers.
+        if [[ "$state" == running && -n "$ports" ]]; then
+            short_ports=''
+            IFS=',' read -ra port_bindings <<< "$ports"
+            for binding in "${port_bindings[@]}"; do
+                if [[ "$binding" =~ :([0-9]+)-\> ]]; then
+                    host_port=${BASH_REMATCH[1]}
+                    [[ -n "${seen_ports[$host_port]:-}" ]] && continue
+                    seen_ports["$host_port"]=1
+                    [[ -n "$short_ports" ]] && short_ports+=', '
+                    short_ports+=$host_port
+                fi
+            done
+
+            [[ -n "$short_ports" ]] || short_ports='-'
+            if ((${#short_ports} > PORT_WIDTH)); then
+                short_ports="${short_ports:0:$((PORT_WIDTH - 1))}…"
+            fi
+            port_text=$short_ports
+            port_color=$C_CYAN
+        else
+            port_text='-'
+            port_color=$C_DIM
+        fi
+
+        # Truncate long names; the preview retains the complete name.
+        short_name=$name
+        if ((${#short_name} > name_width)); then
+            short_name="${short_name:0:$((name_width - 1))}…"
+        fi
+
+        # Keep the icon separate so name padding is predictable.
+        printf '%s\t' "$id"
+        printf '%s%s%s ' "$C_CYAN" "$ICON_CONTAINER" "$C_RESET"
+        printf '%-*s  ' "$name_width" "$short_name"
+
+        printf '%s%-10s%s  ' "$state_color" "$state_text" "$C_RESET"
+
+        printf '%s   %s   %s  ' "$mount_color" "$mount_text" "$C_RESET"
+        printf '%s%-*s%s  ' "$port_color" "$PORT_WIDTH" "$port_text" "$C_RESET"
+        printf '\n'
+
+    done <<< "$containers"
+}
+
+# ---------------------------------------------------------------------------
+# Preview
+# ---------------------------------------------------------------------------
+
+preview_container() {
+    local id=$1
+    local state
+
+    state=$(docker inspect -f '{{.State.Status}}' "$id" 2>/dev/null) || return
+
+    printf '%s%sCONTAINER%s\n' "$C_BOLD" "$C_CYAN" "$C_RESET"
+    printf '%s\n' '────────────────────────────────────────'
+
+    docker inspect --format '
+Name: {{.Name}}
+Image: {{.Config.Image}}
+State: {{.State.Status}}{{if .State.Health}} · {{.State.Health.Status}}{{end}}
+Exit code: {{.State.ExitCode}}
+Created: {{.Created}}
+Restart policy: {{.HostConfig.RestartPolicy.Name}}
+' "$id" 2>&1
+
+    printf '\n%s%sPORTS%s\n' "$C_BOLD" "$C_CYAN" "$C_RESET"
+
+    docker inspect --format '
+{{range $port, $bindings := .NetworkSettings.Ports}}{{if $bindings}}{{range $bindings}}  {{.HostIp}}:{{.HostPort}} -> {{$port}}
+{{end}}{{else}}  {{$port}} (not published)
+{{end}}{{else}}  (none)
+{{end}}' "$id" 2>&1
+
+    printf '\n%s%sRESOURCE USAGE%s\n' "$C_BOLD" "$C_CYAN" "$C_RESET"
+
+    if [[ "$state" == running ]]; then
+        docker stats --no-stream \
+            --format '  CPU: {{.CPUPerc}}\n  Memory: {{.MemUsage}} ({{.MemPerc}})' \
+            "$id" 2>/dev/null || printf '  Metrics unavailable\n'
+    else
+        printf '  Container is stopped; live metrics unavailable.\n'
+    fi
+
+    printf '\n%s%sMOUNTS%s\n' "$C_BOLD" "$C_CYAN" "$C_RESET"
+
+    docker inspect --format '
+{{if .Mounts}}{{range .Mounts}}  {{.Type}}: {{.Source}} -> {{.Destination}} (read-write={{.RW}})
+{{end}}{{else}}  (none)
+{{end}}' "$id" 2>&1
+
+    printf '\n%s%sNETWORKS%s\n' "$C_BOLD" "$C_CYAN" "$C_RESET"
+
+    docker inspect --format '
+{{range $name, $network := .NetworkSettings.Networks}}  {{$name}}
+{{else}}  (none)
+{{end}}' "$id" 2>&1
+
+    printf '\n%s%sRECENT LOGS (last 80 lines)%s\n' \
+        "$C_BOLD" "$C_CYAN" "$C_RESET"
+    printf '%s\n' '────────────────────────────────────────'
+
+    docker logs --tail 80 --timestamps "$id" 2>&1 || true
+}
+
+# ---------------------------------------------------------------------------
+# Picker
+# ---------------------------------------------------------------------------
+
+container_picker() {
+    local preview_command
+    local header
+    local -a fzf_args
+
+    printf -v preview_command '%q __preview {1}' "$SCRIPT_PATH"
+
+    fzf_args=(
+        --ansi
+        --delimiter=$'\t'
+        --with-nth=2..
+        --nth=2..
+        --prompt='Containers > '
+        --layout=reverse
+        --border
+        --preview="$preview_command"
+        --preview-window="right:${PREVIEW_WIDTH}:wrap"
+        --bind "ctrl-r:reload($SCRIPT_PATH __list)"
+    )
+
+    if (( SHOW_HEADER )); then
+        # NAME_WIDTH includes the icon and its following space.
+        printf -v header \
+            '%-*s  %-10s   %-5s   %-*s' \
+            "$NAME_WIDTH" 'CONTAINER' 'STATE' 'MOUNT' "$PORT_WIDTH" 'PORTS'
+
+        fzf_args+=(--header="${C_BOLD}${header}${C_RESET}")
+    fi
+
+    "$SCRIPT_PATH" __list | fzf "${fzf_args[@]}"
+}
+
+# ---------------------------------------------------------------------------
+# Actions
+# ---------------------------------------------------------------------------
+
+open_tmux_window() {
+    local window_name=$1
+    local command=$2
+    local existing_window
+
+    existing_window=$(tmux list-windows -F '#{window_index}\t#{window_name}' 2>/dev/null |
+        awk -F '\t' -v target="$window_name" '$2 == target { print $1; exit }') || return 1
+
+    if [[ -n "$existing_window" ]]; then
+        tmux select-window -t "$existing_window"
+    else
+        tmux new-window -n "$window_name" "$command"
+    fi
+}
+
+container_actions() {
+    local id=$1
+    local action state name window_name
+    local -a actions
+
+    state=$(docker inspect -f '{{.State.Running}}' "$id") || return
+    name=$(docker inspect -f '{{.Name}}' "$id") || return
+    name=${name#/}
+
+    actions=('Recent logs' 'Inspect')
+    if [[ "$state" == true ]]; then
+        actions+=('Follow logs' 'Shell' 'Stop')
+    else
+        actions+=('Start')
+    fi
+
+    action=$(printf '%s\n' "${actions[@]}" |
+        fzf --layout=reverse --border --prompt='Action > ') || return 0
+
+    case "$action" in
+        'Recent logs')
+            docker logs --tail 200 --timestamps "$id"
+            pause
+            ;;
+        'Follow logs')
+            window_name="logs:$name"
+            if [[ -n "${TMUX:-}" ]] && command -v tmux >/dev/null 2>&1; then
+                open_tmux_window "$window_name" \
+                    "docker logs --follow --timestamps '$id'" ||
+                    docker logs --follow --timestamps "$id"
+            else
+                printf 'Following logs; press Ctrl-C to return.\n'
+                docker logs --follow --timestamps "$id"
+            fi
+            ;;
+        'Inspect')
+            if command -v less >/dev/null 2>&1; then
+                docker inspect "$id" | less
+            else
+                docker inspect "$id"
+                pause
+            fi
+            ;;
+        'Shell')
+            window_name="shell:$name"
+            if [[ -n "${TMUX:-}" ]] && command -v tmux >/dev/null 2>&1; then
+                open_tmux_window "$window_name" \
+                    "docker exec -it '$id' sh" ||
+                    docker exec -it "$id" sh
+            else
+                docker exec -it "$id" sh
+            fi
+            ;;
+        'Start')
+            if confirm 'Start this container?'; then
+                docker start "$id"
+                pause
+            fi
+            ;;
+        'Stop')
+            if confirm 'Stop this container?'; then
+                docker stop "$id"
+                pause
+            fi
+            ;;
+    esac
+}
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
+case "${1:-}" in
+    __list)
+        list_containers
+        exit
+        ;;
+    __preview)
+        [[ -n "${2:-}" ]] && preview_container "$2"
+        exit
+        ;;
+esac
+
+while true; do
+    selected=$(container_picker)
+    result=$?
+
+    case "$result" in
+        0)
+            id=${selected%%$'\t'*}
+            container_actions "$id"
+            ;;
+        1|130)
+            break
+            ;;
+        *)
+            printf 'Unable to display the container picker.\n' >&2
+            pause
+            ;;
+    esac
+done
