@@ -99,7 +99,7 @@ pick_project() {
     local selected_file
 
     selected_file=$(mktemp)
-    if ! az devops project list --detect false --query '[].name' --output tsv >"$selected_file"; then
+    if ! az devops project list --detect false --query 'value[].name' --output tsv >"$selected_file"; then
         rm -f -- "$selected_file"
         die 'unable to list Azure DevOps projects'
     fi

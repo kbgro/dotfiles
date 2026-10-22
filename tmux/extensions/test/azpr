@@ -63,6 +63,7 @@ assert_contains "$WORK/fzf.args" '--preview='
 assert_contains "$WORK/fzf.args" '--preview-window=right:65%'
 assert_contains "$WORK/az.log" 'repos pr list --detect false --project Payments --status active'
 assert_contains "$WORK/az.log" 'repos pr update --detect false --id 123 --project Payments --status completed'
+assert_contains "$WORK/az.log" "devops project list --detect false --query value[].name --output tsv"
 
 cat > "$WORK/bin/az" <<'EOF'
 #!/usr/bin/env bash
