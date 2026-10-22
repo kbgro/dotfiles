@@ -23,7 +23,7 @@ if [[ "$*" == repos\ pr\ list* ]]; then
 elif [[ "$*" == devops\ project\ list* ]]; then
     printf 'Payments\n'
 elif [[ "$*" == repos\ pr\ show* ]]; then
-    printf 'Title: feature/auth\nMergeStatus: queued\n'
+    printf 'feature/auth\tPayments\tJane Doe\trefs/heads/feature/auth\trefs/heads/develop\tactive\tqueued\tfalse\thttps://dev.azure.com/example/pr/123\n'
 elif [[ "$*" == repos\ pr\ policy\ list* ]]; then
     printf 'Build validation\tapproved\n'
 fi
@@ -57,6 +57,8 @@ export AZPR_PROJECT_PICKED="$WORK/project-picked"
 
 AZPR_PROJECT=Payments "$SCRIPT" --preview 123 >"$WORK/preview" 2>&1
 assert_contains "$WORK/preview" 'Build validation'
+assert_contains "$WORK/preview" 'Title:  feature/auth'
+assert_contains "$WORK/preview" 'Repo:   Payments'
 
 printf 'y\n' | "$SCRIPT" >"$WORK/output" 2>&1
 assert_contains "$WORK/fzf.args" '--preview='

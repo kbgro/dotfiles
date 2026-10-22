@@ -54,14 +54,29 @@ format_prs() {
 }
 
 preview_pr() {
-    local id=$1
+    local id=$1 details
+    local title repo author source target status merge draft url
 
-    az repos pr show --detect false --id "$id" \
-        --query '{Title:title,Repository:repository.name,Author:createdBy.displayName,Source:sourceRefName,Target:targetRefName,Status:status,MergeStatus:mergeStatus,Draft:isDraft,URL:url}' \
-        --output table 2>&1 || {
-            printf '\nUnable to load PR %s preview.\n' "$id"
-            return 0
-        }
+    if ! details=$(az repos pr show --detect false --id "$id" \
+        --query '[title,repository.name,createdBy.displayName,sourceRefName,targetRefName,status,mergeStatus,isDraft,url]' \
+        --output tsv 2>&1); then
+        printf '%s\n' "$details"
+        printf '\nUnable to load PR %s preview.\n' "$id"
+        return
+    fi
+
+    IFS=$'\t' read -r title repo author source target status merge draft url <<< "$details"
+    source=${source#refs/heads/}
+    target=${target#refs/heads/}
+    printf 'Title:  %s\n' "$title"
+    printf 'Repo:   %s\n' "$repo"
+    printf 'Author: %s\n' "$author"
+    printf 'From:   %s\n' "$source"
+    printf 'Into:   %s\n' "$target"
+    printf 'Status: %s\n' "$status"
+    printf 'Merge:  %s\n' "$merge"
+    printf 'Draft:  %s\n' "$draft"
+    printf 'URL:    %s\n' "$url"
 
     printf '\nPOLICIES\n--------\n'
     az repos pr policy list --detect false --id "$id" --output table 2>&1 ||
