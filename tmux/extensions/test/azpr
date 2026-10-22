@@ -20,6 +20,8 @@ cat > "$WORK/bin/az" <<'EOF'
 printf '%s\n' "$*" >> "$AZPR_TEST_LOG"
 if [[ "$*" == repos\ pr\ list* ]]; then
     printf '123\tfeature/auth\trefs/heads/feature/auth\trefs/heads/develop\tactive\tqueued\n'
+elif [[ "$*" == devops\ project\ list* ]]; then
+    printf 'Payments\n'
 elif [[ "$*" == repos\ pr\ show* ]]; then
     printf 'Title: feature/auth\nMergeStatus: queued\n'
 elif [[ "$*" == repos\ pr\ policy\ list* ]]; then
@@ -29,6 +31,12 @@ EOF
 cat > "$WORK/bin/fzf" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" > "$AZPR_FZF_ARGS"
+if [[ ! -e "$AZPR_PROJECT_PICKED" ]]; then
+    : > "$AZPR_PROJECT_PICKED"
+    cat >/dev/null
+    printf 'Payments\n'
+    exit 0
+fi
 while (($#)); do
     shift
 done
@@ -45,14 +53,16 @@ export PATH="$WORK/bin:$PATH"
 export TMUX=1
 export AZPR_TEST_LOG="$WORK/az.log"
 export AZPR_FZF_ARGS="$WORK/fzf.args"
+export AZPR_PROJECT_PICKED="$WORK/project-picked"
 
-"$SCRIPT" --preview 123 >"$WORK/preview" 2>&1
+AZPR_PROJECT=Payments "$SCRIPT" --preview 123 >"$WORK/preview" 2>&1
 assert_contains "$WORK/preview" 'Build validation'
 
 printf 'y\n' | "$SCRIPT" >"$WORK/output" 2>&1
 assert_contains "$WORK/fzf.args" '--preview='
 assert_contains "$WORK/fzf.args" '--preview-window=right:65%'
-assert_contains "$WORK/az.log" 'repos pr update --id 123 --status completed'
+assert_contains "$WORK/az.log" 'repos pr list --project Payments --status active'
+assert_contains "$WORK/az.log" 'repos pr update --id 123 --project Payments --status completed'
 
 cat > "$WORK/bin/az" <<'EOF'
 #!/usr/bin/env bash

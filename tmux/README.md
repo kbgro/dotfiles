@@ -33,9 +33,10 @@ with a live preview. Existing session and window picker bindings are unchanged.
 ### Azure pull requests
 
 `azpr` requires the Azure DevOps extension for Azure CLI and an authenticated
-`az` session. Select a PR to see its details and policy status. Use `m` to
-merge after confirmation or `a` to enable auto-complete; Azure DevOps still
-enforces repository policies and permissions.
+`az` session. `prefix+P` first asks for a project, then shows its active PRs
+with details and policy status. Use `m` to merge after confirmation or `a` to
+enable auto-complete; Azure DevOps still enforces repository policies and
+permissions.
 
 ### Bash command notifications
 

@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_PATH=$(readlink -f -- "$0")
 PR_FILE=''
+PROJECT=''
 PROMPT='Azure PRs > '
 
 usage() {
@@ -35,7 +36,7 @@ pause() {
 }
 
 list_prs() {
-    az repos pr list --status active \
+    az repos pr list --project "$PROJECT" --status active \
         --query '[].{id:pullRequestId,title:title,source:sourceRefName,target:targetRefName,status:status,merge:mergeStatus}' \
         --output tsv
 }
@@ -53,9 +54,9 @@ format_prs() {
 }
 
 preview_pr() {
-    local id=$1
+    local id=$1 project=${PROJECT:-${AZPR_PROJECT:-}}
 
-    az repos pr show --id "$id" \
+    az repos pr show --id "$id" --project "$project" \
         --query '{Title:title,Repository:repository.name,Author:createdBy.displayName,Source:sourceRefName,Target:targetRefName,Status:status,MergeStatus:mergeStatus,Draft:isDraft,URL:url}' \
         --output table 2>&1 || {
             printf '\nUnable to load PR %s preview.\n' "$id"
@@ -82,7 +83,7 @@ merge_pr() {
     local id=$1
 
     confirm "Merge PR $id now?" || return 0
-    az repos pr update --id "$id" --status completed
+    az repos pr update --id "$id" --project "$PROJECT" --status completed
     pause
 }
 
@@ -90,8 +91,32 @@ enable_autocomplete() {
     local id=$1
 
     confirm "Enable auto-complete for PR $id?" || return 0
-    az repos pr update --id "$id" --auto-complete true
+    az repos pr update --id "$id" --project "$PROJECT" --auto-complete true
     pause
+}
+
+pick_project() {
+    local selected_file
+
+    selected_file=$(mktemp)
+    if ! az devops project list --query '[].name' --output tsv >"$selected_file"; then
+        rm -f -- "$selected_file"
+        die 'unable to list Azure DevOps projects'
+    fi
+    [[ -s "$selected_file" ]] || {
+        rm -f -- "$selected_file"
+        die 'no Azure DevOps projects found'
+    }
+
+    if ! PROJECT=$(fzf --layout=reverse --border \
+        --prompt='Azure projects > ' <"$selected_file"); then
+        rm -f -- "$selected_file"
+        printf 'No project selected or selection cancelled.\n' >&2
+        return 1
+    fi
+    rm -f -- "$selected_file"
+    [[ -n "$PROJECT" ]] || return 1
+    export AZPR_PROJECT="$PROJECT"
 }
 
 pick_pr() {
@@ -130,6 +155,8 @@ main() {
         --preview)
             [[ -n "${2:-}" ]] || die '--preview requires a PR ID'
             require_command az
+            PROJECT=${AZPR_PROJECT:-}
+            [[ -n "$PROJECT" ]] || die 'preview project is not set'
             preview_pr "$2"
             return
             ;;
@@ -143,6 +170,7 @@ main() {
 
     PR_FILE=$(mktemp)
     trap 'rm -f -- "$PR_FILE"' EXIT
+    pick_project || return 0
     if ! list_prs | format_prs >"$PR_FILE"; then
         die 'unable to list Azure DevOps pull requests'
     fi
