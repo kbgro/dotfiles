@@ -54,9 +54,9 @@ format_prs() {
 }
 
 preview_pr() {
-    local id=$1 project=${PROJECT:-${AZPR_PROJECT:-}}
+    local id=$1
 
-    az repos pr show --detect false --id "$id" --project "$project" \
+    az repos pr show --detect false --id "$id" \
         --query '{Title:title,Repository:repository.name,Author:createdBy.displayName,Source:sourceRefName,Target:targetRefName,Status:status,MergeStatus:mergeStatus,Draft:isDraft,URL:url}' \
         --output table 2>&1 || {
             printf '\nUnable to load PR %s preview.\n' "$id"
@@ -83,7 +83,7 @@ merge_pr() {
     local id=$1
 
     confirm "Merge PR $id now?" || return 0
-    az repos pr update --detect false --id "$id" --project "$PROJECT" --status completed
+    az repos pr update --detect false --id "$id" --status completed
     pause
 }
 
@@ -91,7 +91,7 @@ enable_autocomplete() {
     local id=$1
 
     confirm "Enable auto-complete for PR $id?" || return 0
-    az repos pr update --detect false --id "$id" --project "$PROJECT" --auto-complete true
+    az repos pr update --detect false --id "$id" --auto-complete true
     pause
 }
 
@@ -155,8 +155,6 @@ main() {
         --preview)
             [[ -n "${2:-}" ]] || die '--preview requires a PR ID'
             require_command az
-            PROJECT=${AZPR_PROJECT:-}
-            [[ -n "$PROJECT" ]] || die 'preview project is not set'
             preview_pr "$2"
             return
             ;;
