@@ -11,6 +11,7 @@ CANDIDATE_COUNT=0
 GIT_MODE=0
 SESSION_MODE=0
 PRUNABLE_COUNT=0
+ROOTS_FROM_CONFIG=0
 ICON_BRANCH=''
 ICON_DIRTY='●'
 ICON_CLEAN='✓'
@@ -57,6 +58,7 @@ load_roots() {
     local line
 
     if ((${#ROOTS[@]} == 0)) && [[ -f "$ROOTS_FILE" ]]; then
+        ROOTS_FROM_CONFIG=1
         while IFS= read -r line || [[ -n "$line" ]]; do
             [[ -z "${line//[[:space:]]/}" ]] && continue
             [[ "$line" =~ ^[[:space:]]*# ]] && continue
@@ -65,6 +67,17 @@ load_roots() {
     fi
 
     ((${#ROOTS[@]} > 0)) || ROOTS=("$HOME")
+    if ((ROOTS_FROM_CONFIG)); then
+        local root has_existing_root=0
+        for root in "${ROOTS[@]}"; do
+            root=$(expand_root "$root")
+            if [[ -d "$root" ]]; then
+                has_existing_root=1
+                break
+            fi
+        done
+        ((has_existing_root)) || ROOTS=("$HOME")
+    fi
 }
 
 add_candidate() {

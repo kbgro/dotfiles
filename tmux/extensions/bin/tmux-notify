@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+
+_tmux_command_notify() {
+    local status=$?
+    local now=$SECONDS
+
+    if [[ -n "${_TMUX_COMMAND_STARTED:-}" ]] &&
+        ((now - _TMUX_COMMAND_STARTED >= 5)) &&
+        [[ -n "${TMUX:-}" ]]; then
+        printf '\a'
+    fi
+
+    _TMUX_COMMAND_STARTED=$SECONDS
+    return "$status"
+}
+
+case ";${PROMPT_COMMAND:-};" in
+    *';_tmux_command_notify;'*) ;;
+    *) PROMPT_COMMAND="_tmux_command_notify${PROMPT_COMMAND:+; $PROMPT_COMMAND}" ;;
+esac

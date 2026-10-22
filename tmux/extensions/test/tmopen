@@ -72,6 +72,14 @@ assert_contains "$WORK/tmux.log" "new-window -n home/projects -c $WORK/home/proj
 printf '%s\n' "$WORK/projects" > "$XDG_CONFIG_HOME/tmux/open-roots"
 
 : > "$WORK/tmux.log"
+printf '%s\n' '~/missing' > "$XDG_CONFIG_HOME/tmux/open-roots"
+FALLBACK_NAME="$(basename "$(dirname "$WORK/home")")/home"
+HOME="$WORK/home" TMOPEN_TEST_MATCH="$WORK/home" \
+    "$SCRIPT" >"$WORK/output" 2>&1
+assert_contains "$WORK/tmux.log" "new-window -n $FALLBACK_NAME -c $WORK/home"
+printf '%s\n' "$WORK/projects" > "$XDG_CONFIG_HOME/tmux/open-roots"
+
+: > "$WORK/tmux.log"
 TMOPEN_TEST_MATCH="$WORK/one/x/repo" "$SCRIPT" --roots "$WORK/one" >"$WORK/output" 2>&1
 TMOPEN_TEST_MATCH="$WORK/two/x/repo" "$SCRIPT" --roots "$WORK/two" >"$WORK/output" 2>&1
 assert_contains "$WORK/tmux.log" "new-window -n x/repo -c $WORK/one/x/repo"

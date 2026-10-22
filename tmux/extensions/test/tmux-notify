@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT=$(cd -- "$(dirname -- "$0")/../../.." && pwd)
+HOOK="$ROOT/tmux/extensions/bin/tmux-notify"
+INSTALLER="$ROOT/tmux/extensions/bin/install-tmux-notify"
+WORK=$(mktemp -d)
+trap 'rm -rf -- "$WORK"' EXIT
+
+fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
+
+PROMPT_COMMAND='starship_precmd; _tmux_auto_source'
+source "$HOOK"
+[[ "$PROMPT_COMMAND" == _tmux_command_notify\;\ starship_precmd\;\ _tmux_auto_source ]] || \
+    fail 'hook did not preserve PROMPT_COMMAND'
+
+source "$HOOK"
+[[ "$(grep -o '_tmux_command_notify' <<< "$PROMPT_COMMAND" | wc -l)" -eq 1 ]] || \
+    fail 'hook was added more than once'
+
+export TMUX=1
+_TMUX_COMMAND_STARTED=$((SECONDS - 5))
+bell=$(_tmux_command_notify)
+[[ "$bell" == $'\a' ]] || fail 'long command did not emit a bell'
+
+unset TMUX
+_TMUX_COMMAND_STARTED=$((SECONDS - 5))
+bell=$(_tmux_command_notify)
+[[ -z "$bell" ]] || fail 'command outside tmux emitted a bell'
+
+printf '# existing config\n' > "$WORK/bashrc"
+"$INSTALLER" "$WORK/bashrc"
+"$INSTALLER" "$WORK/bashrc"
+grep -Fqx "source \"$(dirname -- "$HOOK")/tmux-notify\"" "$WORK/bashrc" || \
+    fail 'installer did not add the source line'
+[[ "$(grep -Fc 'tmux-notify' "$WORK/bashrc")" -eq 1 ]] || \
+    fail 'installer added duplicate source lines'
+
+printf '# SDKMAN must remain last\nexport SDKMAN_DIR=/tmp/sdkman\n' > "$WORK/bashrc-sdkman"
+"$INSTALLER" "$WORK/bashrc-sdkman"
+source_line=$(grep -nF "source \"$(dirname -- "$HOOK")/tmux-notify\"" "$WORK/bashrc-sdkman" | cut -d: -f1)
+sdkman_line=$(grep -n 'SDKMAN_DIR' "$WORK/bashrc-sdkman" | cut -d: -f1)
+((source_line < sdkman_line)) || fail 'installer placed hook after SDKMAN'
+
+printf 'tmux notify tests passed\n'

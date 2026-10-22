@@ -29,3 +29,16 @@ The tmux bindings are `prefix+F` for directories and `prefix+G` for Git
 repositories/worktrees. Existing session and window picker bindings are
 unchanged.
 
+### Bash command notifications
+
+Install the Bash prompt hook once:
+
+```sh
+~/dotfiles/tmux/extensions/bin/install-tmux-notify
+```
+
+It adds an idempotent source line to `~/.bashrc`. Commands that run for five
+seconds or longer emit a terminal bell when their prompt returns, allowing the
+existing tmux window notification marker to show which window finished. The
+hook preserves the existing Starship and Bash prompt commands.
+
