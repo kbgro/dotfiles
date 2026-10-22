@@ -1,0 +1,115 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT=$(cd -- "$(dirname -- "$0")/../../.." && pwd)
+SCRIPT="$ROOT/tmux/extensions/bin/tmopen"
+WORK=$(mktemp -d)
+trap 'rm -rf -- "$WORK"' EXIT
+
+fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
+assert_contains() {
+    grep -F -- "$2" "$1" >/dev/null || {
+        printf '%s\n' "$(<"$1")" >&2
+        fail "$2 not found in $1"
+    }
+}
+
+mkdir -p "$WORK/projects/payment/feature auth" "$WORK/bin"
+mkdir -p "$WORK/one/x/repo" "$WORK/two/x/repo"
+mkdir -p "$WORK/home/projects"
+
+git -C "$WORK/projects/payment" init -q repo
+git -C "$WORK/projects/payment/repo" config user.email test@example.com
+git -C "$WORK/projects/payment/repo" config user.name test
+touch "$WORK/projects/payment/repo/file"
+git -C "$WORK/projects/payment/repo" add file
+git -C "$WORK/projects/payment/repo" commit -qm init
+git -C "$WORK/projects/payment/repo" worktree add -q "$WORK/projects/payment/feature auth" -b feature-auth
+printf '%s\n' dirty >> "$WORK/projects/payment/feature auth/file"
+[[ -f "$WORK/projects/payment/feature auth/.git" ]] || fail 'linked worktree does not use a .git file'
+
+cat > "$WORK/bin/fzf" <<'EOF'
+#!/usr/bin/env bash
+if [[ "${TMOPEN_TEST_EMPTY:-0}" == 1 ]]; then
+    exit 1
+fi
+while IFS= read -r -d '' record; do
+    [[ -n "${TMOPEN_TEST_CANDIDATES:-}" ]] && printf '%s\n' "$record" >> "$TMOPEN_TEST_CANDIDATES"
+    if [[ -z "${TMOPEN_TEST_MATCH:-}" || "$record" == *"$TMOPEN_TEST_MATCH"* ]]; then
+        printf '%s\0' "$record"
+        exit 0
+    fi
+done
+exit 1
+EOF
+
+cat > "$WORK/bin/tmux" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$TMOPEN_TEST_LOG"
+case "${1:-}" in
+    list-sessions) printf '%s\n' "${TMOPEN_TEST_SESSIONS:-}" ;;
+    new-window|new-session|switch-client) ;;
+esac
+EOF
+chmod +x "$WORK/bin/fzf" "$WORK/bin/tmux"
+
+export PATH="$WORK/bin:$PATH"
+export TMUX=1
+export TMOPEN_TEST_LOG="$WORK/tmux.log"
+export XDG_CONFIG_HOME="$WORK/config"
+mkdir -p "$XDG_CONFIG_HOME/tmux"
+printf '%s\n' "$WORK/projects" > "$XDG_CONFIG_HOME/tmux/open-roots"
+EXPECTED_NAME="$(basename "$(dirname "$WORK/projects")")/projects"
+
+TMOPEN_TEST_ID=0 "$SCRIPT" >"$WORK/output" 2>&1
+assert_contains "$WORK/tmux.log" "new-window -n $EXPECTED_NAME -c $WORK/projects"
+
+: > "$WORK/tmux.log"
+printf '%s\n' '~/projects' > "$XDG_CONFIG_HOME/tmux/open-roots"
+HOME="$WORK/home" TMOPEN_TEST_MATCH="$WORK/home/projects" \
+    "$SCRIPT" >"$WORK/output" 2>&1
+assert_contains "$WORK/tmux.log" "new-window -n home/projects -c $WORK/home/projects"
+printf '%s\n' "$WORK/projects" > "$XDG_CONFIG_HOME/tmux/open-roots"
+
+: > "$WORK/tmux.log"
+TMOPEN_TEST_MATCH="$WORK/one/x/repo" "$SCRIPT" --roots "$WORK/one" >"$WORK/output" 2>&1
+TMOPEN_TEST_MATCH="$WORK/two/x/repo" "$SCRIPT" --roots "$WORK/two" >"$WORK/output" 2>&1
+assert_contains "$WORK/tmux.log" "new-window -n x/repo -c $WORK/one/x/repo"
+assert_contains "$WORK/tmux.log" "new-window -n x/repo -c $WORK/two/x/repo"
+
+: > "$WORK/tmux.log"
+export TMOPEN_TEST_CANDIDATES="$WORK/candidates.log"
+TMOPEN_TEST_MATCH="$WORK/projects/payment/feature auth" \
+    "$SCRIPT" --git >"$WORK/output" 2>&1
+assert_contains "$WORK/tmux.log" "new-window -n payment/feature auth -c $WORK/projects/payment/feature auth"
+assert_contains "$WORK/candidates.log" ' feature-auth'
+assert_contains "$WORK/candidates.log" '●'
+
+: > "$WORK/tmux.log"
+TMOPEN_TEST_MATCH="$WORK/projects/payment/repo" \
+    "$SCRIPT" --git --roots "$WORK/projects/payment" >"$WORK/output" 2>&1
+assert_contains "$WORK/tmux.log" "new-window -n payment/repo -c $WORK/projects/payment/repo"
+
+: > "$WORK/tmux.log"
+TMOPEN_TEST_SESSIONS="$EXPECTED_NAME"$'\t'"$WORK/projects/payment" \
+    TMOPEN_TEST_ID=0 "$SCRIPT" --session >"$WORK/output" 2>&1
+assert_contains "$WORK/tmux.log" "new-session -d -s tmp/$EXPECTED_NAME -c $WORK/projects"
+
+: > "$WORK/tmux.log"
+TMOPEN_TEST_MATCH="$WORK/projects/payment" \
+    TMOPEN_TEST_SESSIONS="payment/main"$'\t'"$WORK/projects/payment" \
+    "$SCRIPT" --session >"$WORK/output" 2>&1
+assert_contains "$WORK/tmux.log" 'switch-client -t payment/main'
+
+TMOPEN_TEST_EMPTY=1 "$SCRIPT" >"$WORK/output" 2>&1
+assert_contains "$WORK/output" 'No candidates found or selection cancelled.'
+
+TMOPEN_TEST_MATCH=none "$SCRIPT" --roots "$WORK/missing" >"$WORK/output" 2>&1
+assert_contains "$WORK/output" 'No candidates found.'
+
+if env -u TMUX "$SCRIPT" >"$WORK/output" 2>&1; then
+    fail 'outside-tmux invocation unexpectedly succeeded'
+fi
+assert_contains "$WORK/output" 'must be run inside tmux'
+
+printf 'tmopen tests passed\n'

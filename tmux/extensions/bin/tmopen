@@ -1,0 +1,303 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOTS_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/tmux/open-roots"
+declare -a ROOTS=()
+declare -a CANDIDATE_PATHS=()
+declare -A SEEN_PATHS=()
+declare -A SESSION_NAMES=()
+declare -A SESSION_PATHS=()
+CANDIDATE_COUNT=0
+GIT_MODE=0
+SESSION_MODE=0
+PRUNABLE_COUNT=0
+ICON_BRANCH=''
+ICON_DIRTY='●'
+ICON_CLEAN='✓'
+PATH_COLUMN_WIDTH=64
+BRANCH_COLUMN_WIDTH=28
+C_RESET=$'\033[0m'
+C_BRANCH=$'\033[36m'
+C_DIRTY=$'\033[31m'
+C_CLEAN=$'\033[32m'
+
+usage() {
+    cat <<'EOF'
+Usage: tmopen [--git] [--session] [--roots ROOT...]
+
+Pick a directory or Git worktree and open it inside tmux.
+--git       list Git repositories and worktrees
+--session   switch to or create a session for the selected path
+--roots     use the remaining arguments as search roots
+EOF
+}
+
+die() {
+    printf 'tmopen: %s\n' "$1" >&2
+    exit 1
+}
+
+require_command() {
+    command -v "$1" >/dev/null 2>&1 || die "required command not found: $1"
+}
+
+canonical_path() {
+    realpath -e -- "$1"
+}
+
+expand_root() {
+    case "$1" in
+        '~') printf '%s\n' "$HOME" ;;
+        '~/'*) printf '%s/%s\n' "$HOME" "${1#\~/}" ;;
+        *) printf '%s\n' "$1" ;;
+    esac
+}
+
+load_roots() {
+    local line
+
+    if ((${#ROOTS[@]} == 0)) && [[ -f "$ROOTS_FILE" ]]; then
+        while IFS= read -r line || [[ -n "$line" ]]; do
+            [[ -z "${line//[[:space:]]/}" ]] && continue
+            [[ "$line" =~ ^[[:space:]]*# ]] && continue
+            ROOTS+=("$line")
+        done < "$ROOTS_FILE"
+    fi
+
+    ((${#ROOTS[@]} > 0)) || ROOTS=("$HOME")
+}
+
+add_candidate() {
+    local path=$1 display=${2:-$1} canonical
+
+    [[ -d "$path" ]] || return 0
+    canonical=$(canonical_path "$path") || return 0
+    [[ -n "${SEEN_PATHS[$canonical]:-}" ]] && return 0
+
+    SEEN_PATHS["$canonical"]=$((CANDIDATE_COUNT + 1))
+    CANDIDATE_PATHS[CANDIDATE_COUNT]=$canonical
+    printf '%s\t%s\0' "$CANDIDATE_COUNT" "$display"
+    ((CANDIDATE_COUNT += 1))
+}
+
+git_display() {
+    local path=$1 branch state state_color display_path path_column branch_column
+
+    branch=$(git -C "$path" symbolic-ref --quiet --short HEAD 2>/dev/null ||
+        git -C "$path" rev-parse --short HEAD 2>/dev/null || printf 'detached')
+    if [[ -n "$(git -C "$path" status --porcelain 2>/dev/null)" ]]; then
+        state=$ICON_DIRTY
+        state_color=$C_DIRTY
+    else
+        state=$ICON_CLEAN
+        state_color=$C_CLEAN
+    fi
+
+    display_path=$path
+    if ((${#display_path} > PATH_COLUMN_WIDTH)); then
+        display_path="${display_path:0:$((PATH_COLUMN_WIDTH - 1))}…"
+    fi
+    printf -v path_column '%-*s' "$PATH_COLUMN_WIDTH" "$display_path"
+    printf -v branch_column '%-*s' "$BRANCH_COLUMN_WIDTH" "$ICON_BRANCH $branch"
+    printf '%s  %b%s%b  %b%s%b' \
+        "$path_column" "$C_BRANCH" "$branch_column" "$C_RESET" \
+        "$state_color" "$state" "$C_RESET"
+}
+
+add_git_candidate() {
+    local path=$1 canonical
+
+    [[ -d "$path" ]] || return 0
+    canonical=$(canonical_path "$path") || return 0
+    git -C "$canonical" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
+    add_candidate "$canonical" "$(git_display "$canonical")"
+}
+
+discover_directories() {
+    local root path
+
+    for root in "${ROOTS[@]}"; do
+        root=$(expand_root "$root")
+        [[ -d "$root" ]] || continue
+        while IFS= read -r -d '' path; do
+            add_candidate "$path" "$path"
+        done < <(find -P "$root" -type d -name .git -prune -o -type d -print0 2>/dev/null)
+    done
+}
+
+discover_git() {
+    local root marker repo field worktree
+
+    for root in "${ROOTS[@]}"; do
+        root=$(expand_root "$root")
+        [[ -d "$root" ]] || continue
+        while IFS= read -r -d '' marker; do
+            repo=${marker%/.git}
+            [[ -d "$repo" ]] || continue
+            while IFS= read -r -d '' field; do
+                [[ "$field" == worktree\ * ]] || continue
+                worktree=${field#worktree }
+                if [[ -d "$worktree" ]]; then
+                    add_git_candidate "$worktree"
+                else
+                    ((PRUNABLE_COUNT += 1))
+                fi
+            done < <(git -C "$repo" worktree list --porcelain -z 2>/dev/null || true)
+        done < <(find -P "$root" \( -type d -o -type f \) -name .git -print0 2>/dev/null)
+    done
+}
+
+pick_candidate() {
+    local selected_file record id
+
+    ((CANDIDATE_COUNT > 0)) || {
+        if ((PRUNABLE_COUNT > 0)); then
+            printf 'No usable Git worktrees found; %d worktree(s) are missing or prunable.\n' \
+                "$PRUNABLE_COUNT" >&2
+        else
+            printf 'No candidates found.\n' >&2
+        fi
+        return 1
+    }
+
+    selected_file=$(mktemp)
+    if ! fzf --ansi --read0 --print0 --delimiter=$'\t' --with-nth=2.. \
+        --layout=reverse --border --prompt="$FZF_PROMPT" \
+        <"$CANDIDATE_FILE" >"$selected_file"; then
+        rm -f -- "$selected_file"
+        printf 'No candidates found or selection cancelled.\n' >&2
+        return 1
+    fi
+
+    IFS= read -r -d '' record < "$selected_file" || {
+        rm -f -- "$selected_file"
+        return 1
+    }
+    rm -f -- "$selected_file"
+    id=${record%%$'\t'*}
+    SELECTED_PATH=${CANDIDATE_PATHS[id]:-}
+    [[ -n "$SELECTED_PATH" ]] || die 'selected candidate could not be resolved'
+}
+
+display_name() {
+    local path=${1%/} child parent
+
+    [[ -n "$path" ]] || path=/
+    child=${path##*/}
+    parent=${path%/*}
+    parent=${parent##*/}
+    [[ -n "$parent" ]] || parent=/
+    printf '%s/%s' "$parent" "$child"
+}
+
+load_sessions() {
+    local name path
+
+    SESSION_NAMES=()
+    SESSION_PATHS=()
+    while IFS=$'\t' read -r name path; do
+        [[ -n "$name" ]] || continue
+        SESSION_NAMES["$name"]=$path
+        SESSION_PATHS["$path"]=$name
+    done < <(tmux list-sessions -F '#{session_name}\t#{session_path}' 2>/dev/null || true)
+}
+
+session_for_path() {
+    local path=$1 session_path name
+
+    for session_path in "${!SESSION_PATHS[@]}"; do
+        if [[ -d "$session_path" ]] && [[ "$(canonical_path "$session_path")" == "$path" ]]; then
+            name=${SESSION_PATHS[$session_path]}
+            printf '%s' "$name"
+            return 0
+        fi
+    done
+    return 1
+}
+
+unique_session_name() {
+    local path=$1 name n start index
+    local -a parts=()
+
+    IFS=/ read -r -a parts <<< "${path#/}"
+    start=2
+    while :; do
+        name=''
+        index=$((${#parts[@]} - start))
+        if ((index < 0)); then
+            index=0
+        fi
+        for ((n = index; n < ${#parts[@]}; n++)); do
+            [[ -n "$name" ]] && name+=/
+            name+=${parts[n]}
+        done
+        [[ -n "${SESSION_NAMES[$name]:-}" ]] || {
+            printf '%s' "$name"
+            return
+        }
+        ((start += 1))
+    done
+}
+
+open_selected() {
+    local path=$1 name existing
+
+    name=$(display_name "$path")
+    load_sessions
+    if ((SESSION_MODE)); then
+        if existing=$(session_for_path "$path"); then
+            tmux switch-client -t "$existing"
+            return
+        fi
+        name=$(unique_session_name "$path")
+        tmux new-session -d -s "$name" -c "$path"
+        tmux switch-client -t "$name"
+    else
+        tmux new-window -n "$name" -c "$path"
+    fi
+}
+
+main() {
+    local arg
+
+    [[ -n "${TMUX:-}" ]] || die 'must be run inside tmux'
+    require_command tmux
+    require_command fzf
+    require_command realpath
+    require_command git
+
+    while (($#)); do
+        arg=$1
+        case "$arg" in
+            --git) GIT_MODE=1 ;;
+            --session) SESSION_MODE=1 ;;
+            --roots)
+                shift
+                (($# > 0)) || die '--roots requires at least one path'
+                ROOTS=("$@")
+                break
+                ;;
+            --help|-h) usage; return 0 ;;
+            *) die "unknown option: $arg" ;;
+        esac
+        shift
+    done
+
+    load_roots
+    if ((GIT_MODE)); then
+        FZF_PROMPT='Git worktrees > '
+    else
+        FZF_PROMPT='Directories > '
+    fi
+    CANDIDATE_FILE=$(mktemp)
+    trap 'rm -f -- "$CANDIDATE_FILE"' EXIT
+    if ((GIT_MODE)); then
+        discover_git >"$CANDIDATE_FILE"
+    else
+        discover_directories >"$CANDIDATE_FILE"
+    fi
+    pick_candidate || return 0
+    open_selected "$SELECTED_PATH"
+}
+
+main "$@"
