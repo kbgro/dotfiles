@@ -54,6 +54,17 @@ assert_contains "$WORK/fzf.args" '--preview='
 assert_contains "$WORK/fzf.args" '--preview-window=right:65%'
 assert_contains "$WORK/az.log" 'repos pr update --id 123 --status completed'
 
+cat > "$WORK/bin/az" <<'EOF'
+#!/usr/bin/env bash
+printf 'Azure CLI request failed: configure organization and project\n' >&2
+exit 1
+EOF
+
+if "$SCRIPT" >"$WORK/error-output" 2>&1; then
+    fail 'Azure CLI failure was not reported'
+fi
+assert_contains "$WORK/error-output" 'Azure CLI request failed'
+
 if "$SCRIPT" --help >"$WORK/help" 2>&1; then
     assert_contains "$WORK/help" 'Pick an active Azure DevOps pull request'
 else

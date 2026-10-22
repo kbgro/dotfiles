@@ -19,6 +19,9 @@ EOF
 
 die() {
     printf 'azpr: %s\n' "$1" >&2
+    if [[ -t 0 ]]; then
+        read -r -p 'Press Enter to close...' _ || true
+    fi
     exit 1
 }
 
@@ -54,7 +57,10 @@ preview_pr() {
 
     az repos pr show --id "$id" \
         --query '{Title:title,Repository:repository.name,Author:createdBy.displayName,Source:sourceRefName,Target:targetRefName,Status:status,MergeStatus:mergeStatus,Draft:isDraft,URL:url}' \
-        --output table 2>&1 || return 0
+        --output table 2>&1 || {
+            printf '\nUnable to load PR %s preview.\n' "$id"
+            return 0
+        }
 
     printf '\nPOLICIES\n--------\n'
     az repos pr policy list --id "$id" --output table 2>&1 ||
