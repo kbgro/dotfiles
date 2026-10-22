@@ -4,6 +4,7 @@
 
 - tmh: tmux here, create tmux session in this directory.
 - tmopen: fzf directory and Git worktree picker for tmux.
+- azpr: fzf Azure DevOps pull-request picker for tmux.
 
 ### tmopen
 
@@ -26,8 +27,15 @@ one path per line. Blank lines and lines beginning with `#` are ignored. If the
 file is absent or empty, `$HOME` is used.
 
 The tmux bindings are `prefix+F` for directories and `prefix+G` for Git
-repositories/worktrees. Existing session and window picker bindings are
-unchanged.
+repositories/worktrees. `prefix+P` opens active Azure DevOps pull requests
+with a live preview. Existing session and window picker bindings are unchanged.
+
+### Azure pull requests
+
+`azpr` requires the Azure DevOps extension for Azure CLI and an authenticated
+`az` session. Select a PR to see its details and policy status. Use `m` to
+merge after confirmation or `a` to enable auto-complete; Azure DevOps still
+enforces repository policies and permissions.
 
 ### Bash command notifications
 

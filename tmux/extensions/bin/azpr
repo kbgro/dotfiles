@@ -1,0 +1,147 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_PATH=$(readlink -f -- "$0")
+PR_FILE=''
+PROMPT='Azure PRs > '
+
+usage() {
+    cat <<'EOF'
+Usage: azpr
+
+Pick an active Azure DevOps pull request inside tmux.
+Enter  show details
+m      merge after confirmation
+a      enable auto-complete
+q      cancel
+EOF
+}
+
+die() {
+    printf 'azpr: %s\n' "$1" >&2
+    exit 1
+}
+
+require_command() {
+    command -v "$1" >/dev/null 2>&1 || die "required command not found: $1"
+}
+
+pause() {
+    printf '\nPress Enter to continue...' >&2
+    read -r _ || true
+}
+
+list_prs() {
+    az repos pr list --status active \
+        --query '[].{id:pullRequestId,title:title,source:sourceRefName,target:targetRefName,status:status,merge:mergeStatus}' \
+        --output tsv
+}
+
+format_prs() {
+    local id title source target status merge
+
+    while IFS=$'\t' read -r id title source target status merge; do
+        [[ -n "$id" ]] || continue
+        source=${source#refs/heads/}
+        target=${target#refs/heads/}
+        printf '%s\t%-5s %-48s %s -> %s  %s / %s\n' \
+            "$id" "$id" "$title" "$source" "$target" "$status" "$merge"
+    done
+}
+
+preview_pr() {
+    local id=$1
+
+    az repos pr show --id "$id" \
+        --query '{Title:title,Repository:repository.name,Author:createdBy.displayName,Source:sourceRefName,Target:targetRefName,Status:status,MergeStatus:mergeStatus,Draft:isDraft,URL:url}' \
+        --output table 2>&1 || return 0
+
+    printf '\nPOLICIES\n--------\n'
+    az repos pr policy list --id "$id" --output table 2>&1 ||
+        printf 'Policy details unavailable.\n'
+}
+
+show_details() {
+    preview_pr "$1"
+    pause
+}
+
+confirm() {
+    local answer
+    read -r -p "$1 [y/N] " answer || return 1
+    [[ "$answer" =~ ^([yY]|[yY][eE][sS])$ ]]
+}
+
+merge_pr() {
+    local id=$1
+
+    confirm "Merge PR $id now?" || return 0
+    az repos pr update --id "$id" --status completed
+    pause
+}
+
+enable_autocomplete() {
+    local id=$1
+
+    confirm "Enable auto-complete for PR $id?" || return 0
+    az repos pr update --id "$id" --auto-complete true
+    pause
+}
+
+pick_pr() {
+    local selected_file record action id
+    local -a result
+
+    selected_file=$(mktemp)
+    if ! fzf --ansi --delimiter=$'\t' --with-nth=2.. \
+        --layout=reverse --border --prompt="$PROMPT" \
+        --preview="$SCRIPT_PATH --preview {1}" \
+        --preview-window='right:65%' \
+        --expect=enter,m,a,q <"$PR_FILE" >"$selected_file"; then
+        rm -f -- "$selected_file"
+        printf 'No PR selected or selection cancelled.\n' >&2
+        return 1
+    fi
+
+    mapfile -t result <"$selected_file"
+    rm -f -- "$selected_file"
+    action=${result[0]:-enter}
+    record=${result[1]:-}
+    [[ -n "$record" ]] || return 0
+    id=${record%%$'\t'*}
+
+    case "$action" in
+        enter) show_details "$id" ;;
+        m) merge_pr "$id" ;;
+        a) enable_autocomplete "$id" ;;
+        q) ;;
+    esac
+}
+
+main() {
+    case "${1:-}" in
+        --help|-h) usage; return 0 ;;
+        --preview)
+            [[ -n "${2:-}" ]] || die '--preview requires a PR ID'
+            require_command az
+            preview_pr "$2"
+            return
+            ;;
+        '') ;;
+        *) die "unknown option: $1" ;;
+    esac
+
+    [[ -n "${TMUX:-}" ]] || die 'must be run inside tmux'
+    require_command az
+    require_command fzf
+
+    PR_FILE=$(mktemp)
+    trap 'rm -f -- "$PR_FILE"' EXIT
+    if ! list_prs | format_prs >"$PR_FILE"; then
+        die 'unable to list Azure DevOps pull requests'
+    fi
+    [[ -s "$PR_FILE" ]] || die 'no active Azure DevOps pull requests found'
+    pick_pr || true
+}
+
+main "$@"
