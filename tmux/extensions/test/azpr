@@ -23,7 +23,11 @@ if [[ "$*" == repos\ pr\ list* ]]; then
 elif [[ "$*" == devops\ project\ list* ]]; then
     printf 'Payments\n'
 elif [[ "$*" == repos\ pr\ show* ]]; then
-    printf 'feature/auth\tPayments\tJane Doe\trefs/heads/feature/auth\trefs/heads/develop\tactive\tqueued\tfalse\thttps://dev.azure.com/example/pr/123\n'
+    if [[ "$*" == *join* ]]; then
+        printf 'feature/auth\tPayments\tJane Doe\trefs/heads/feature/auth\trefs/heads/develop\tactive\tqueued\tfalse\thttps://dev.azure.com/example/pr/123\n'
+    else
+        printf 'feature/auth\nPayments\nJane Doe\nrefs/heads/feature/auth\nrefs/heads/develop\nactive\nqueued\nfalse\nhttps://dev.azure.com/example/pr/123\n'
+    fi
 elif [[ "$*" == repos\ pr\ policy\ list* ]]; then
     printf 'Build validation\tapproved\n'
 fi

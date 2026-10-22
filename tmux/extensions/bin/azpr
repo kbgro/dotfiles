@@ -58,7 +58,7 @@ preview_pr() {
     local title repo author source target status merge draft url
 
     if ! details=$(az repos pr show --detect false --id "$id" \
-        --query '[title,repository.name,createdBy.displayName,sourceRefName,targetRefName,status,mergeStatus,isDraft,url]' \
+        --query "join('\\t', [title,repository.name,createdBy.displayName,sourceRefName,targetRefName,status,mergeStatus,to_string(isDraft),url])" \
         --output tsv 2>&1); then
         printf '%s\n' "$details"
         printf '\nUnable to load PR %s preview.\n' "$id"
