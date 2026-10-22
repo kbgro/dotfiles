@@ -36,7 +36,7 @@ pause() {
 }
 
 list_prs() {
-    az repos pr list --project "$PROJECT" --status active \
+    az repos pr list --detect false --project "$PROJECT" --status active \
         --query '[].{id:pullRequestId,title:title,source:sourceRefName,target:targetRefName,status:status,merge:mergeStatus}' \
         --output tsv
 }
@@ -56,7 +56,7 @@ format_prs() {
 preview_pr() {
     local id=$1 project=${PROJECT:-${AZPR_PROJECT:-}}
 
-    az repos pr show --id "$id" --project "$project" \
+    az repos pr show --detect false --id "$id" --project "$project" \
         --query '{Title:title,Repository:repository.name,Author:createdBy.displayName,Source:sourceRefName,Target:targetRefName,Status:status,MergeStatus:mergeStatus,Draft:isDraft,URL:url}' \
         --output table 2>&1 || {
             printf '\nUnable to load PR %s preview.\n' "$id"
@@ -64,7 +64,7 @@ preview_pr() {
         }
 
     printf '\nPOLICIES\n--------\n'
-    az repos pr policy list --id "$id" --output table 2>&1 ||
+    az repos pr policy list --detect false --id "$id" --output table 2>&1 ||
         printf 'Policy details unavailable.\n'
 }
 
@@ -83,7 +83,7 @@ merge_pr() {
     local id=$1
 
     confirm "Merge PR $id now?" || return 0
-    az repos pr update --id "$id" --project "$PROJECT" --status completed
+    az repos pr update --detect false --id "$id" --project "$PROJECT" --status completed
     pause
 }
 
@@ -91,7 +91,7 @@ enable_autocomplete() {
     local id=$1
 
     confirm "Enable auto-complete for PR $id?" || return 0
-    az repos pr update --id "$id" --project "$PROJECT" --auto-complete true
+    az repos pr update --detect false --id "$id" --project "$PROJECT" --auto-complete true
     pause
 }
 
@@ -99,7 +99,7 @@ pick_project() {
     local selected_file
 
     selected_file=$(mktemp)
-    if ! az devops project list --query '[].name' --output tsv >"$selected_file"; then
+    if ! az devops project list --detect false --query '[].name' --output tsv >"$selected_file"; then
         rm -f -- "$selected_file"
         die 'unable to list Azure DevOps projects'
     fi

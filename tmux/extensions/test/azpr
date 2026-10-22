@@ -61,8 +61,8 @@ assert_contains "$WORK/preview" 'Build validation'
 printf 'y\n' | "$SCRIPT" >"$WORK/output" 2>&1
 assert_contains "$WORK/fzf.args" '--preview='
 assert_contains "$WORK/fzf.args" '--preview-window=right:65%'
-assert_contains "$WORK/az.log" 'repos pr list --project Payments --status active'
-assert_contains "$WORK/az.log" 'repos pr update --id 123 --project Payments --status completed'
+assert_contains "$WORK/az.log" 'repos pr list --detect false --project Payments --status active'
+assert_contains "$WORK/az.log" 'repos pr update --detect false --id 123 --project Payments --status completed'
 
 cat > "$WORK/bin/az" <<'EOF'
 #!/usr/bin/env bash
