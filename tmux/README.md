@@ -5,6 +5,7 @@
 - tmh: tmux here, create tmux session in this directory.
 - tmopen: fzf directory and Git worktree picker for tmux.
 - azpr: fzf Azure DevOps pull-request picker for tmux.
+- home-size: status-bar size of ~ and free space on /home (red at 95% full).
 
 ### tmopen
 

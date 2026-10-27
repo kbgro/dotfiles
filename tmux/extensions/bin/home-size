@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Size of ~ and free space on /home, for the tmux status bar.
+# tmux calls this every few seconds; du takes ~10s, so it runs in the background at most every 5 minutes. df is cheap and runs every tick.
+set -u
+cache=${XDG_CACHE_HOME:-$HOME/.cache}/home-size
+max_age=300
+
+age=$(( $(date +%s) - $(stat -c %Y "$cache" 2>/dev/null || echo 0) ))
+if (( age > max_age )); then
+  touch "$cache"   # claim this refresh so the next 3-second tick doesn't start another
+  ( s=$(du -s -BG "$HOME" 2>/dev/null | cut -f1) && [[ -n $s ]] && echo "$s" > "$cache.tmp" && mv "$cache.tmp" "$cache" ) &>/dev/null &
+fi
+
+size=$(cat "$cache" 2>/dev/null); size=${size%G}
+read -r pct avail < <(df -BG --output=pcent,avail "$HOME" | tail -1)
+p=${pct%\%}
+if (( p >= 95 )); then c=red; elif (( p >= 90 )); then c=yellow; else c=green; fi
+printf '#[fg=%s,bold]\uf0a0 %s/%s#[default] \n' "$c" "${avail%G}" "${size:-?}"
