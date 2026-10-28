@@ -1,0 +1,5 @@
+name: agent-01
+box: boxforge/debian13
+provider: libvirt
+cpus: 2
+memory_mb: 2048

@@ -1,0 +1,375 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+DEVBOX_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+MACHINES_DIR="$DEVBOX_DIR/machines"
+RUNTIME_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/devbox"
+
+usage() {
+    printf '%s\n' \
+        'Usage:' \
+        '  devbox list' \
+        '  devbox show  <machine>' \
+        '  devbox halt  <machine>' \
+        '  devbox ssh  <machine>' \
+        '  devbox destroy  <machine>' \
+        '  devbox status  <machine>' \
+        '  devbox init  <machine> [--force]' \
+        '  devbox up  <machine>'
+}
+
+validate_machine_name() {
+    local name="$1"
+
+    if [[ ! "$name" =~ ^[a-zA-Z0-9][a-zA-Z0-9_-]*$ ]]; then
+        printf 'Invalid machine name: %s\n' "$name" >&2
+        return 2
+    fi
+}
+
+load_machine() {
+    local requested="$1"
+    local file="$MACHINES_DIR/$requested.yaml"
+    local key value
+
+    validate_machine_name "$requested" || return $?
+
+    if [[ ! -f "$file" ]]; then
+        printf 'Unknown machine: %s\n' "$requested" >&2
+        return 1
+    fi
+
+    MACHINE_NAME=""
+    MACHINE_BOX=""
+    MACHINE_PROVIDER=""
+    MACHINE_CPUS=""
+    MACHINE_MEMORY_MB=""
+
+    while IFS=': ' read -r key value; do
+        value="${value%$'\r'}"
+
+        case "$key" in
+            name)      MACHINE_NAME="$value" ;;
+            box)       MACHINE_BOX="$value" ;;
+            provider)  MACHINE_PROVIDER="$value" ;;
+            cpus)      MACHINE_CPUS="$value" ;;
+            memory_mb) MACHINE_MEMORY_MB="$value" ;;
+        esac
+    done < "$file"
+
+    if [[ "$MACHINE_NAME" != "$requested" ||
+          -z "$MACHINE_BOX" ||
+          "$MACHINE_BOX" == *'"'* ||
+          "$MACHINE_BOX" == *'$'* ||
+          -z "$MACHINE_PROVIDER" ||
+          ! "$MACHINE_PROVIDER" =~ ^[a-zA-Z0-9_-]+$ ||
+          ! "$MACHINE_CPUS" =~ ^[1-9][0-9]*$ ||
+          ! "$MACHINE_MEMORY_MB" =~ ^[1-9][0-9]*$ ]]; then
+        printf 'Invalid machine definition: %s\n' "$file" >&2
+        return 1
+    fi
+}
+
+list_machines() {
+    local file requested
+
+    printf '%-16s %-24s %-10s %-6s %-10s\n' \
+        "NAME" "BOX" "PROVIDER" "CPUS" "MEMORY"
+
+    shopt -s nullglob
+    local files=("$MACHINES_DIR"/*.yaml)
+    shopt -u nullglob
+
+    if ((${#files[@]} == 0)); then
+        printf 'No machine definitions found in %s\n' "$MACHINES_DIR"
+        return 0
+    fi
+
+    for file in "${files[@]}"; do
+        requested="${file##*/}"
+        requested="${requested%.yaml}"
+
+        if ! load_machine "$requested"; then
+            return 1
+        fi
+
+        printf '%-16s %-24s %-10s %-6s %s MiB\n' \
+            "$MACHINE_NAME" \
+            "$MACHINE_BOX" \
+            "$MACHINE_PROVIDER" \
+            "$MACHINE_CPUS" \
+            "$MACHINE_MEMORY_MB"
+    done
+}
+
+show_machine() {
+    local requested="$1"
+
+    load_machine "$requested" || return $?
+
+    printf 'Name:       %s\n' "$MACHINE_NAME"
+    printf 'Box:        %s\n' "$MACHINE_BOX"
+    printf 'Provider:   %s\n' "$MACHINE_PROVIDER"
+    printf 'CPUs:       %s\n' "$MACHINE_CPUS"
+    printf 'Memory:     %s MiB\n' "$MACHINE_MEMORY_MB"
+}
+
+generate_vagrantfile() {
+    local output_file="$1"
+
+    cat > "$output_file" <<EOF
+Vagrant.configure("2") do |config|
+  config.vm.box = "$MACHINE_BOX"
+  config.vm.hostname = "$MACHINE_NAME"
+  config.vm.synced_folder ".", "/vagrant", disabled: true
+
+  config.vm.provider :libvirt do |libvirt|
+    libvirt.driver = "kvm"
+    libvirt.memory = $MACHINE_MEMORY_MB
+    libvirt.cpus = $MACHINE_CPUS
+    libvirt.storage_pool_name = "vms-pool"
+  end
+end
+EOF
+}
+
+init_machine() {
+    local requested="$1"
+    local force="${2:-0}"
+    local runtime_dir="$RUNTIME_DIR/machines/$requested"
+    local vagrantfile="$runtime_dir/Vagrantfile"
+    local temp_file
+
+    load_machine "$requested" || return $?
+
+    mkdir -p -- "$runtime_dir"
+
+    temp_file="$(mktemp "$runtime_dir/.Vagrantfile.XXXXXX")"
+
+    if ! generate_vagrantfile "$temp_file"; then
+        rm -f -- "$temp_file"
+        return 1
+    fi
+
+    if [[ -e "$vagrantfile" ]]; then
+        if cmp -s -- "$temp_file" "$vagrantfile"; then
+            rm -f -- "$temp_file"
+            printf 'Already initialized: %s\n' "$requested"
+            printf 'Vagrantfile: %s\n' "$vagrantfile"
+            return 0
+        fi
+
+        if [[ "$force" != "1" ]]; then
+            printf 'Configuration drift detected for %s.\n' "$requested" >&2
+            printf 'Existing file was not changed.\n' >&2
+            printf 'Run with --force to replace it:\n' >&2
+            printf '  devbox init %q --force\n' "$requested" >&2
+            printf 'Expected file: %s\n' "$temp_file" >&2
+            return 1
+        fi
+    fi
+
+    mv -- "$temp_file" "$vagrantfile"
+
+    printf 'Initialized: %s\n' "$requested"
+    printf 'Vagrantfile: %s\n' "$vagrantfile"
+}
+
+up_machine() {
+    local requested="$1"
+    local runtime_dir="$RUNTIME_DIR/machines/$requested"
+    local vagrantfile="$runtime_dir/Vagrantfile"
+
+    load_machine "$requested" || return $?
+
+    if [[ ! -f "$vagrantfile" ]]; then
+        init_machine "$requested" || return $?
+    fi
+
+    # Re-check after initialization. Never start with stale configuration.
+    local expected_file
+    expected_file="$(mktemp)"
+    if ! generate_vagrantfile "$expected_file"; then
+        rm -f -- "$expected_file"
+        return 1
+    fi
+
+    if ! cmp -s -- "$expected_file" "$vagrantfile"; then
+        printf 'Configuration drift detected for %s.\n' "$requested" >&2
+        printf 'Expected configuration differs from:\n  %s\n' "$vagrantfile" >&2
+        printf 'Review with:\n  diff -u %q %q\n' "$vagrantfile" "$expected_file" >&2
+        printf 'Expected file retained at: %s\n' "$expected_file" >&2
+        return 1
+    fi
+
+    rm -f -- "$expected_file"
+
+    if ! command -v vagrant >/dev/null 2>&1; then
+        printf 'Vagrant is not installed or is not on PATH.\n' >&2
+        return 1
+    fi
+
+    printf 'Starting managed machine: %s\n' "$requested"
+    (
+        cd -- "$runtime_dir"
+        vagrant up --provider="$MACHINE_PROVIDER"
+    )
+}
+
+status_machine() {
+    local requested="$1"
+    local runtime_dir="$RUNTIME_DIR/machines/$requested"
+    local vagrantfile="$runtime_dir/Vagrantfile"
+
+    load_machine "$requested" || return $?
+
+    if [[ ! -f "$vagrantfile" ]]; then
+        printf 'Not initialized: %s\n' "$requested"
+        return 0
+    fi
+
+    if ! command -v vagrant >/dev/null 2>&1; then
+        printf 'Vagrant is not installed or is not on PATH.\n' >&2
+        return 1
+    fi
+
+    (
+        cd -- "$runtime_dir" || exit 1
+        vagrant status
+    )
+}
+
+ssh_machine() {
+    local requested="$1"
+    local runtime_dir="$RUNTIME_DIR/machines/$requested"
+    local vagrantfile="$runtime_dir/Vagrantfile"
+
+    load_machine "$requested" || return $?
+
+    if [[ ! -f "$vagrantfile" ]]; then
+        printf 'Not initialized: %s\n' "$requested" >&2
+        printf 'Run: devbox init %s\n' "$requested" >&2
+        return 1
+    fi
+
+    if ! command -v vagrant >/dev/null 2>&1; then
+        printf 'Vagrant is not installed or is not on PATH.\n' >&2
+        return 1
+    fi
+
+    (
+        cd -- "$runtime_dir" || exit 1
+        vagrant ssh
+    )
+}
+
+halt_machine() {
+    local requested="$1"
+    local runtime_dir="$RUNTIME_DIR/machines/$requested"
+    local vagrantfile="$runtime_dir/Vagrantfile"
+
+    load_machine "$requested" || return $?
+
+    if [[ ! -f "$vagrantfile" ]]; then
+        printf 'Not initialized: %s\n' "$requested" >&2
+        return 1
+    fi
+
+    if ! command -v vagrant >/dev/null 2>&1; then
+        printf 'Vagrant is not installed or is not on PATH.\n' >&2
+        return 1
+    fi
+
+    (
+        cd -- "$runtime_dir" || exit 1
+        vagrant halt
+    )
+}
+
+destroy_machine() {
+    local requested="$1"
+    local runtime_dir="$RUNTIME_DIR/machines/$requested"
+    local vagrantfile="$runtime_dir/Vagrantfile"
+    local answer
+
+    load_machine "$requested" || return $?
+
+    if [[ ! -f "$vagrantfile" ]]; then
+        printf 'Not initialized: %s\n' "$requested" >&2
+        return 1
+    fi
+
+    if ! command -v vagrant >/dev/null 2>&1; then
+        printf 'Vagrant is not installed or is not on PATH.\n' >&2
+        return 1
+    fi
+
+    printf 'WARNING: This will destroy the managed VM: %s\n' "$requested" >&2
+    printf 'Its virtual disk and VM state may be permanently deleted.\n' >&2
+    printf 'The runtime directory and Vagrantfile will be retained.\n' >&2
+    printf 'Type the machine name (%s) to confirm: ' "$requested" >&2
+
+    IFS= read -r answer || return 1
+
+    if [[ "$answer" != "$requested" ]]; then
+        printf 'Confirmation did not match. Nothing destroyed.\n' >&2
+        return 1
+    fi
+
+    (
+        cd -- "$runtime_dir" || exit 1
+        vagrant destroy --force
+    )
+}
+
+main() {
+    case "${1:-}" in
+        list)
+            (($# == 1)) || { usage >&2; return 2; }
+            list_machines
+            ;;
+        show)
+            (($# == 2)) || { usage >&2; return 2; }
+            show_machine "$2"
+            ;;
+        init)
+            if [[ "$#" == 2 ]]; then
+                init_machine "$2"
+            elif [[ "$#" == 3 && "$3" == "--force" ]]; then
+                init_machine "$2" 1
+            else
+                usage >&2
+                return 2
+            fi
+            ;;
+        up)
+            (($# == 2)) || { usage >&2; return 2; }
+            up_machine "$2"
+            ;;
+        status)
+            (($# == 2)) || { usage >&2; return 2; }
+            status_machine "$2"
+            ;;
+        ssh)
+            (($# == 2)) || { usage >&2; return 2; }
+            ssh_machine "$2"
+            ;;
+        halt)
+            (($# == 2)) || { usage >&2; return 2; }
+            halt_machine "$2"
+            ;;
+        destroy)
+            (($# == 2)) || { usage >&2; return 2; }
+            destroy_machine "$2"
+            ;;
+        -h|--help)
+            usage
+            ;;
+        *)
+            usage >&2
+            return 2
+            ;;
+    esac
+}
+
+main "$@"

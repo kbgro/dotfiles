@@ -1,0 +1,5 @@
+name: srv-01
+box: boxforge/debian13
+provider: libvirt
+cpus: 8
+memory_mb: 4096
