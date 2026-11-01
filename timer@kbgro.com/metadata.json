@@ -1,8 +1,0 @@
-{
-  "name": "Timer",
-  "description": "A clock Timer",
-  "uuid": "timer@kbgro.com",
-  "shell-version": [
-    "48"
-  ]
-}
