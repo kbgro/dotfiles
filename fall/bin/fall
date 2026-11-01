@@ -1,0 +1,402 @@
+#!/usr/bin/env bash
+
+if ((BASH_VERSINFO[0] < 4)); then
+    printf '%s\n' 'fall requires Bash 4 or newer.' 'On macOS, install it with: brew install bash' >&2
+    exit 1
+fi
+
+FALL_DIR="${FALL_DIR:-$HOME/.fall}"
+INSTALLED_FILE="$FALL_DIR/installed"
+BUILD_DIR="$FALL_DIR/build"
+
+init_fall() {
+    mkdir -p "$BUILD_DIR"
+    touch "$INSTALLED_FILE"
+    awk -F'|' 'NF == 1 && $1 != "" {print $1 "|unknown"; next} {print}' "$INSTALLED_FILE" > "$INSTALLED_FILE.tmp" && mv "$INSTALLED_FILE.tmp" "$INSTALLED_FILE"
+}
+
+install_core() { sudo apt install -y build-essential curl git tmux zoxide unzip wget fzf tree git-flow; }
+remove_core() { sudo apt remove -y build-essential curl git tmux zoxide unzip wget fzf tree git-flow; }
+
+install_rust() {
+    if ! command -v rustc >/dev/null 2>&1; then
+        curl --proto '=https' --tlsv1.2 https://sh.rustup.rs -sSf | sh
+    else
+        echo 'Rust is already installed'
+    fi
+}
+remove_rust() { [ ! -f "$HOME/.cargo/bin/rustup" ] || "$HOME/.cargo/bin/rustup" self uninstall -y; }
+upgrade_rust() { "$HOME/.cargo/bin/rustup" update; }
+version_rust() { rustc --version 2>/dev/null | awk '{print $2}'; }
+
+install_starship() {
+    if ! command -v starship >/dev/null 2>&1; then
+        curl -sS https://starship.rs/install.sh | sh
+    else
+        echo 'Starship is already installed'
+    fi
+}
+remove_starship() { [ ! -f "$HOME/.local/bin/starship" ] || rm -f "$HOME/.local/bin/starship"; }
+version_starship() { starship --version 2>/dev/null | awk 'NR == 1 {print $2}'; }
+
+install_nvm() {
+    if [ ! -d "$HOME/.nvm" ]; then
+        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+        export NVM_DIR="$HOME/.nvm"
+        [ ! -s "$NVM_DIR/nvm.sh" ] || . "$NVM_DIR/nvm.sh"
+        nvm install --lts
+    else
+        echo 'NVM is already installed'
+    fi
+}
+remove_nvm() {
+    if [ -d "$HOME/.nvm" ]; then
+        rm -rf "$HOME/.nvm"
+        sed -i '/NVM_DIR/d' "$HOME/.bashrc" 2>/dev/null
+        sed -i '/nvm.sh/d' "$HOME/.bashrc" 2>/dev/null
+        sed -i '/NVM_DIR/d' "$HOME/.zshrc" 2>/dev/null
+        sed -i '/nvm.sh/d' "$HOME/.zshrc" 2>/dev/null
+    fi
+}
+
+version_nvim() { nvim --version 2>/dev/null | sed -n '1s/^NVIM v//p'; }
+install_nvim() {
+    local current
+    current="$(version_nvim)"
+    if [ -z "$current" ] || [[ "$current" != "${PACKAGE_VERSION[nvim]}"* ]]; then
+        cd "$BUILD_DIR" || return 2
+        rm -rf neovim
+        git clone --depth 1 https://github.com/neovim/neovim --branch release-0.12
+        cd neovim || return 2
+        sudo apt install -y cmake gettext ripgrep
+        make -j 4 CMAKE_BUILD_TYPE=RelWithDebInfo
+        cd build || return 2
+        cpack -G DEB && sudo dpkg -i nvim-linux-x86_64.deb
+        cd "$BUILD_DIR" || return 2
+        rm -rf neovim
+    else
+        echo "Neovim $current is already installed"
+    fi
+}
+upgrade_nvim() { install_nvim; }
+remove_nvim() { sudo dpkg -r nvim 2>/dev/null || sudo apt remove -y neovim; }
+
+install_just() {
+    if ! command -v just >/dev/null 2>&1; then
+        cd "$BUILD_DIR" || return 2
+        rm -rf just
+        git clone https://github.com/casey/just.git
+        cd just || return 2
+        cargo build --release
+        sudo install -Dm 755 target/release/just /usr/bin/just
+        sudo install -Dm 644 completions/just.bash /usr/share/bash-completion/completions/just
+        sudo install -Dm 644 man/just.1 /usr/share/man/man1/just.1
+        cd "$BUILD_DIR" || return 2
+        rm -rf just
+    else
+        echo 'Just is already installed'
+    fi
+}
+remove_just() {
+    sudo rm -f /usr/bin/just /usr/share/bash-completion/completions/just /usr/share/man/man1/just.1
+}
+version_just() { just --version 2>/dev/null | awk '{print $2}'; }
+
+install_alacritty() { sudo apt install -y alacritty; mkdir -p "$HOME/.config/alacritty"; }
+remove_alacritty() { sudo apt remove -y alacritty; }
+install_qemu() { sudo apt-get install -y qemu-kvm bridge-utils virt-manager libosinfo-bin; }
+remove_qemu() { sudo apt-get remove -y qemu-kvm bridge-utils virt-manager libosinfo-bin; }
+
+install_vagrant() {
+    echo 'Installing vagrant ...'
+    if [ ! -f /usr/share/keyrings/hashicorp-archive-keyring.gpg ]; then
+        wget -O- https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+        echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
+        sudo apt update
+    fi
+    sudo apt install -y vagrant nfs-kernel-server
+    sudo apt-get install -y qemu libvirt-daemon-system libvirt-dev ebtables libguestfs-tools libxslt-dev libxml2-dev zlib1g-dev ruby-dev
+    vagrant plugin install vagrant-libvirt 2>/dev/null || echo 'Vagrant libvirt plugin may already be installed'
+    vagrant box add debian/bookworm64 2>/dev/null || echo 'Box may already be added'
+}
+remove_vagrant() {
+    sudo apt remove -y vagrant nfs-kernel-server
+    vagrant plugin uninstall vagrant-libvirt 2>/dev/null || true
+}
+install_qt() { sudo apt-get install -y libgl1-mesa-dev libxcb-cursor-dev openjdk-17-jdk; }
+remove_qt() { sudo apt-get remove -y libgl1-mesa-dev libxcb-cursor-dev openjdk-17-jdk; }
+
+configure_dotnet_path() {
+    local profile line
+    for profile in "$HOME/.profile" "$HOME/.bashrc" "$HOME/.zshrc"; do
+        touch "$profile"
+        line='export DOTNET_ROOT="$HOME/.dotnet"'
+        grep -qxF "$line" "$profile" || printf '%s\n' "$line" >> "$profile"
+        line='export PATH="$PATH:$DOTNET_ROOT:$DOTNET_ROOT/tools"'
+        grep -qxF "$line" "$profile" || printf '%s\n' "$line" >> "$profile"
+    done
+}
+
+install_dotnet() {
+    local version="${PACKAGE_VERSION[dotnet]}" archive url
+    archive="$FALL_DIR/dotnet-sdk-$version-linux-x64.tar.gz"
+    url="https://builds.dotnet.microsoft.com/dotnet/Sdk/$version/dotnet-sdk-$version-linux-x64.tar.gz"
+    if ! curl -fL "$url" -o "$archive"; then
+        rm -f "$archive"
+        echo 'Error: Could not download the .NET SDK'
+        return 1
+    fi
+    mkdir -p "$HOME/.dotnet"
+    if ! tar zxf "$archive" --no-same-owner -C "$HOME/.dotnet"; then
+        rm -f "$archive"
+        echo 'Error: Could not extract the .NET SDK'
+        return 1
+    fi
+    rm -f "$archive"
+    configure_dotnet_path
+}
+remove_dotnet() {
+    rm -rf "$HOME/.dotnet"
+    for profile in "$HOME/.profile" "$HOME/.bashrc" "$HOME/.zshrc"; do
+        [ ! -f "$profile" ] || sed -i '/^export DOTNET_ROOT="\$HOME\/\.dotnet"$/d;/^export PATH="\$PATH:\$DOTNET_ROOT:\$DOTNET_ROOT\/tools"$/d' "$profile"
+    done
+}
+upgrade_dotnet() { install_dotnet; }
+version_dotnet() { [ ! -x "$HOME/.dotnet/dotnet" ] || "$HOME/.dotnet/dotnet" --version 2>/dev/null; }
+
+install_android() {
+    local zip_file="$1" temp_dir cmdline_tools_dir
+    [ -f "$HOME/.sdkman/bin/sdkman-init.sh" ] && . "$HOME/.sdkman/bin/sdkman-init.sh"
+    if ! command -v sdk >/dev/null 2>&1; then
+        echo 'Installing sdkman'
+        curl -s https://get.sdkman.io | bash
+        . "$HOME/.sdkman/bin/sdkman-init.sh"
+    else
+        sdk version
+    fi
+    command -v javac >/dev/null 2>&1 || sdk install java 25.0.1-tem
+    command -v kotlinc >/dev/null 2>&1 || sdk install kotlin
+    command -v gradle >/dev/null 2>&1 || sdk install gradle
+    ANDROID_SDK=/opt/android-sdk
+    if [ ! -d "$ANDROID_SDK" ]; then
+        sudo mkdir -p "$ANDROID_SDK"
+        sudo chown "$USER" "$ANDROID_SDK"
+    fi
+    if [ -n "$zip_file" ]; then
+        [ -f "$zip_file" ] || { echo "Error: Zip file not found: $zip_file"; return 1; }
+        echo 'Extracting Android CLI tools...'
+        temp_dir=$(mktemp -d)
+        unzip -q "$zip_file" -d "$temp_dir" || { rm -rf "$temp_dir"; echo 'Error: Failed to extract zip file'; return 1; }
+        if [ -d "$temp_dir/cmdline-tools" ]; then
+            cmdline_tools_dir="$temp_dir/cmdline-tools"
+        elif [ -d "$(find "$temp_dir" -mindepth 2 -maxdepth 2 -type d -name cmdline-tools | head -n1)" ]; then
+            cmdline_tools_dir="$(find "$temp_dir" -mindepth 2 -maxdepth 2 -type d -name cmdline-tools | head -n1)"
+        else
+            cmdline_tools_dir="$(find "$temp_dir" -type d -name cmdline-tools | head -n1)"
+        fi
+        [ -d "$cmdline_tools_dir" ] || { rm -rf "$temp_dir"; echo 'Error: Could not find cmdline-tools directory'; return 1; }
+        [ ! -d "$ANDROID_SDK/cmdline-tools" ] || rm -rf "$ANDROID_SDK/cmdline-tools"
+        mv "$cmdline_tools_dir" "$ANDROID_SDK/cmdline-tools"
+        mkdir -p "$ANDROID_SDK/cmdline-tools/latest"
+        find "$ANDROID_SDK/cmdline-tools" -maxdepth 1 -mindepth 1 ! -name latest -exec mv {} "$ANDROID_SDK/cmdline-tools/latest/" \;
+        rm -rf "$temp_dir"
+        echo "Android CLI tools installed to $ANDROID_SDK"
+    else
+        echo "Provide the Android CLI tools zip: $0 install android /path/to/commandlinetools-linux-*.zip"
+    fi
+}
+remove_android() {
+    if [ -d "$HOME/.sdkman" ]; then
+        rm -rf "$HOME/.sdkman"
+        sed -i '/sdkman-init.sh/d' "$HOME/.bashrc" 2>/dev/null
+        sed -i '/sdkman-init.sh/d' "$HOME/.zshrc" 2>/dev/null
+    fi
+    sudo rm -rf /opt/android-sdk
+}
+
+install_font_nerd() {
+    cd "$BUILD_DIR" || return 2
+    wget -q https://github.com/ryanoasis/nerd-fonts/releases/download/v3.4.0/JetBrainsMono.zip
+    mkdir -p JetBrainsMono
+    unzip -q JetBrainsMono.zip -d JetBrainsMono
+    rm -f JetBrainsMono.zip
+    sudo mkdir -p /usr/share/fonts/nerds
+    sudo mv JetBrainsMono /usr/share/fonts/nerds/
+    fc-cache -v
+}
+remove_font_nerd() { sudo rm -rf /usr/share/fonts/nerds/JetBrainsMono; fc-cache -v; }
+install_bluetooth() { sudo apt install -y bluetooth bluez bluez-tools rfkill; newgrp lp; sudo usermod -aG lp "$USER"; }
+remove_bluetooth() { sudo apt remove -y bluetooth bluez bluez-tools rfkill; }
+
+config_git() {
+    if [ -z "$GIT_USERNAME" ] || [ -z "$GIT_EMAIL" ]; then
+        echo 'Error: GIT_USERNAME and GIT_EMAIL environment variables must be set'
+        return 1
+    fi
+    git config --global init.defaultBranch main
+    git config --global user.name "$GIT_USERNAME"
+    git config --global user.email "$GIT_EMAIL"
+}
+config_ubuntu_news() {
+    [ ! -f /etc/apt/apt.conf.d/20apt-esm-hook.conf ] || sudo mv /etc/apt/apt.conf.d/20apt-esm-hook.conf /etc/apt/apt.conf.d/20apt-esm-hook.conf.disabled
+    sudo apt remove -y ubuntu-advantage-tools ubuntu-pro-client
+}
+
+PACKAGES=(core rust starship nvm nvim just alacritty qemu vagrant qt dotnet android font-nerd bluetooth)
+declare -A PACKAGE_VERSION PACKAGE_DESCRIPTION PACKAGE_DEPENDENCIES PACKAGE_CATEGORY PACKAGE_INSTALL PACKAGE_REMOVE PACKAGE_UPGRADE
+PACKAGE_VERSION[core]=1.0; PACKAGE_DESCRIPTION[core]='Core development tools and utilities'; PACKAGE_DEPENDENCIES[core]='build-essential,curl,git,tmux,zoxide,unzip,wget,fzf,tree,git-flow'; PACKAGE_CATEGORY[core]=essential; PACKAGE_INSTALL[core]=install_core; PACKAGE_REMOVE[core]=remove_core
+PACKAGE_VERSION[rust]=latest; PACKAGE_DESCRIPTION[rust]='Rust programming language'; PACKAGE_DEPENDENCIES[rust]=rustup; PACKAGE_CATEGORY[rust]=language; PACKAGE_INSTALL[rust]=install_rust; PACKAGE_REMOVE[rust]=remove_rust; PACKAGE_UPGRADE[rust]=upgrade_rust
+PACKAGE_VERSION[starship]=latest; PACKAGE_DESCRIPTION[starship]='Cross-shell prompt'; PACKAGE_DEPENDENCIES[starship]=starship; PACKAGE_CATEGORY[starship]=tool; PACKAGE_INSTALL[starship]=install_starship; PACKAGE_REMOVE[starship]=remove_starship
+PACKAGE_VERSION[nvm]=0.40.3; PACKAGE_DESCRIPTION[nvm]='Node Version Manager'; PACKAGE_DEPENDENCIES[nvm]=nvm; PACKAGE_CATEGORY[nvm]=language; PACKAGE_INSTALL[nvm]=install_nvm; PACKAGE_REMOVE[nvm]=remove_nvm
+PACKAGE_VERSION[nvim]=0.12; PACKAGE_DESCRIPTION[nvim]='Neovim text editor'; PACKAGE_DEPENDENCIES[nvim]=neovim; PACKAGE_CATEGORY[nvim]=editor; PACKAGE_INSTALL[nvim]=install_nvim; PACKAGE_REMOVE[nvim]=remove_nvim; PACKAGE_UPGRADE[nvim]=upgrade_nvim
+PACKAGE_VERSION[just]=latest; PACKAGE_DESCRIPTION[just]='Command runner'; PACKAGE_DEPENDENCIES[just]=just; PACKAGE_CATEGORY[just]=tool; PACKAGE_INSTALL[just]=install_just; PACKAGE_REMOVE[just]=remove_just
+PACKAGE_VERSION[alacritty]=latest; PACKAGE_DESCRIPTION[alacritty]='GPU-accelerated terminal'; PACKAGE_DEPENDENCIES[alacritty]=alacritty; PACKAGE_CATEGORY[alacritty]=terminal; PACKAGE_INSTALL[alacritty]=install_alacritty; PACKAGE_REMOVE[alacritty]=remove_alacritty
+PACKAGE_VERSION[qemu]=latest; PACKAGE_DESCRIPTION[qemu]='Virtualization tools'; PACKAGE_DEPENDENCIES[qemu]='qemu-kvm,virt-manager'; PACKAGE_CATEGORY[qemu]=virtualization; PACKAGE_INSTALL[qemu]=install_qemu; PACKAGE_REMOVE[qemu]=remove_qemu
+PACKAGE_VERSION[vagrant]=latest; PACKAGE_DESCRIPTION[vagrant]='Vagrant virtualization'; PACKAGE_DEPENDENCIES[vagrant]=vagrant; PACKAGE_CATEGORY[vagrant]=virtualization; PACKAGE_INSTALL[vagrant]=install_vagrant; PACKAGE_REMOVE[vagrant]=remove_vagrant
+PACKAGE_VERSION[qt]=latest; PACKAGE_DESCRIPTION[qt]='Qt development libraries'; PACKAGE_DEPENDENCIES[qt]='libgl1-mesa-dev,libxcb-cursor-dev,openjdk-17-jdk'; PACKAGE_CATEGORY[qt]=framework; PACKAGE_INSTALL[qt]=install_qt; PACKAGE_REMOVE[qt]=remove_qt
+PACKAGE_VERSION[dotnet]=10.0.403; PACKAGE_DESCRIPTION[dotnet]='.NET SDK'; PACKAGE_DEPENDENCIES[dotnet]='curl,tar'; PACKAGE_CATEGORY[dotnet]=language; PACKAGE_INSTALL[dotnet]=install_dotnet; PACKAGE_REMOVE[dotnet]=remove_dotnet; PACKAGE_UPGRADE[dotnet]=upgrade_dotnet
+PACKAGE_VERSION[android]=latest; PACKAGE_DESCRIPTION[android]='Android development tools'; PACKAGE_DEPENDENCIES[android]='sdkman,java,kotlin,gradle'; PACKAGE_CATEGORY[android]=mobile; PACKAGE_INSTALL[android]=install_android; PACKAGE_REMOVE[android]=remove_android
+PACKAGE_VERSION[font-nerd]=3.4.0; PACKAGE_DESCRIPTION[font-nerd]='JetBrains Mono Nerd Font'; PACKAGE_DEPENDENCIES[font-nerd]=fonts; PACKAGE_CATEGORY[font-nerd]=font; PACKAGE_INSTALL[font-nerd]=install_font_nerd; PACKAGE_REMOVE[font-nerd]=remove_font_nerd
+PACKAGE_VERSION[bluetooth]=latest; PACKAGE_DESCRIPTION[bluetooth]='Bluetooth support'; PACKAGE_DEPENDENCIES[bluetooth]='bluetooth,bluez'; PACKAGE_CATEGORY[bluetooth]=system; PACKAGE_INSTALL[bluetooth]=install_bluetooth; PACKAGE_REMOVE[bluetooth]=remove_bluetooth
+
+package_exists() { [ -n "${PACKAGE_VERSION[$1]+x}" ]; }
+state_version() { awk -F'|' -v pkg="$1" '$1 == pkg {print $2; exit}' "$INSTALLED_FILE" 2>/dev/null; }
+is_installed() { [ -n "$(state_version "$1")" ]; }
+detect_version() {
+    local pkg="$1" version_func="version_$1" version
+    if declare -F "$version_func" >/dev/null; then
+        version="$($version_func 2>/dev/null)"
+        [ -n "$version" ] && { printf '%s' "$version"; return; }
+    fi
+    printf '%s' unknown
+}
+mark_installed() {
+    local pkg="$1" version="${2:-$(detect_version "$1")}" tmp
+    tmp=$(mktemp)
+    awk -F'|' -v pkg="$pkg" -v version="$version" '$1 != pkg {print} $1 == pkg {print pkg "|" version; found=1} END {if (!found) print pkg "|" version}' "$INSTALLED_FILE" > "$tmp" && mv "$tmp" "$INSTALLED_FILE"
+}
+mark_removed() {
+    local pkg="$1" tmp
+    tmp=$(mktemp)
+    awk -F'|' -v pkg="$pkg" '$1 != pkg {print}' "$INSTALLED_FILE" > "$tmp" && mv "$tmp" "$INSTALLED_FILE"
+}
+run_package_function() {
+    local function_name="$1"
+    shift
+    declare -F "$function_name" >/dev/null || return 127
+    "$function_name" "$@"
+}
+
+cmd_install() {
+    local pkg="$1" function_name
+    shift
+    [ -n "$pkg" ] || { echo "Usage: $0 install <package>"; return 1; }
+    package_exists "$pkg" || { echo "Error: Package '$pkg' not found"; return 1; }
+    if is_installed "$pkg"; then echo "Package '$pkg' is already installed"; return; fi
+    echo "Installing $pkg (${PACKAGE_VERSION[$pkg]})..."
+    [ -z "${PACKAGE_DEPENDENCIES[$pkg]}" ] || echo "Dependencies: ${PACKAGE_DEPENDENCIES[$pkg]}"
+    function_name="${PACKAGE_INSTALL[$pkg]}"
+    run_package_function "$function_name" "$@" || { echo "Error: Installation of '$pkg' failed"; return 1; }
+    mark_installed "$pkg"
+    echo "Package '$pkg' installed successfully ($(state_version "$pkg"))"
+}
+cmd_remove() {
+    local pkg="$1" function_name
+    [ -n "$pkg" ] || { echo "Usage: $0 remove <package>"; return 1; }
+    package_exists "$pkg" || { echo "Error: Package '$pkg' not found"; return 1; }
+    if ! is_installed "$pkg"; then echo "Package '$pkg' is not installed"; return; fi
+    function_name="${PACKAGE_REMOVE[$pkg]}"
+    run_package_function "$function_name" || { echo "Error: Removal of '$pkg' failed"; return 1; }
+    mark_removed "$pkg"
+    echo "Package '$pkg' removed successfully"
+}
+cmd_list() {
+    local pkg version status
+    if [ "$1" = --installed ]; then
+        printf '%-20s %-24s %s\n' Package Version Description
+        while IFS='|' read -r pkg version; do
+            [ -n "$pkg" ] || continue
+            printf '%-20s %-24s %s\n' "$pkg" "${version:-unknown}" "${PACKAGE_DESCRIPTION[$pkg]}"
+        done < "$INSTALLED_FILE"
+        return
+    fi
+    printf '%-20s %-10s %-15s %s %s\n' Package Version Category Description Status
+    for pkg in "${PACKAGES[@]}"; do
+        status=
+        is_installed "$pkg" && status='[installed]'
+        printf '%-20s %-10s %-15s %s %s\n' "$pkg" "${PACKAGE_VERSION[$pkg]}" "${PACKAGE_CATEGORY[$pkg]}" "${PACKAGE_DESCRIPTION[$pkg]}" "$status"
+    done
+}
+cmd_search() {
+    local term="$1" pkg status found=0
+    [ -n "$term" ] || { echo "Usage: $0 search <term>"; return 1; }
+    for pkg in "${PACKAGES[@]}"; do
+        if printf '%s %s %s\n' "$pkg" "${PACKAGE_DESCRIPTION[$pkg]}" "${PACKAGE_CATEGORY[$pkg]}" | grep -qi -- "$term"; then
+            status=; is_installed "$pkg" && status='[installed]'
+            printf '%-20s %-10s %-15s %s %s\n' "$pkg" "${PACKAGE_VERSION[$pkg]}" "${PACKAGE_CATEGORY[$pkg]}" "${PACKAGE_DESCRIPTION[$pkg]}" "$status"
+            found=1
+        fi
+    done
+    [ "$found" -eq 1 ] || echo "No packages found matching '$term'"
+}
+cmd_show() {
+    local pkg="$1" status=not-installed
+    [ -n "$pkg" ] || { echo "Usage: $0 show <package>"; return 1; }
+    package_exists "$pkg" || { echo "Error: Package '$pkg' not found"; return 1; }
+    is_installed "$pkg" && status="installed ($(state_version "$pkg"))"
+    printf 'Package: %s\nVersion: %s\nStatus: %s\nCategory: %s\nDescription: %s\n' "$pkg" "${PACKAGE_VERSION[$pkg]}" "$status" "${PACKAGE_CATEGORY[$pkg]}" "${PACKAGE_DESCRIPTION[$pkg]}"
+    [ -z "${PACKAGE_DEPENDENCIES[$pkg]}" ] || echo "Dependencies: ${PACKAGE_DEPENDENCIES[$pkg]}"
+}
+cmd_update() { echo 'Package metadata is local; nothing to update.'; }
+cmd_upgrade() {
+    local pkg function_name
+    while IFS='|' read -r pkg; do
+        [ -n "$pkg" ] || continue
+        function_name="${PACKAGE_UPGRADE[$pkg]}"
+        if [ -z "$function_name" ]; then
+            echo "Package '$pkg': manual upgrade required"
+        else
+            echo "Upgrading $pkg..."
+            run_package_function "$function_name" || return 1
+            mark_installed "$pkg"
+            echo "Package '$pkg' upgraded to $(state_version "$pkg")"
+        fi
+    done < "$INSTALLED_FILE"
+}
+cmd_config() {
+    case "$1" in
+        git) config_git ;;
+        ubuntu-news) config_ubuntu_news ;;
+        *) echo "Available: git, ubuntu-news"; return 1 ;;
+    esac
+}
+usage() {
+    cat <<EOF
+Fall - Personal Development Package Manager
+
+Usage: $0 <command> [options]
+
+  install <package>    Install a package
+  remove <package>     Remove a package
+  list [--installed]   List packages
+  search <term>        Search packages
+  show <package>       Show package information
+  update               Check local package metadata
+  upgrade              Upgrade packages with an upgrade handler
+  config <target>      Configure git or Ubuntu news
+EOF
+}
+
+init_fall
+case "${1:-help}" in
+    install) shift; cmd_install "$@" ;;
+    remove|uninstall) cmd_remove "${2:-}" ;;
+    list) cmd_list "${2:-}" ;;
+    search) cmd_search "${2:-}" ;;
+    show|info) cmd_show "${2:-}" ;;
+    update) cmd_update ;;
+    upgrade) cmd_upgrade ;;
+    config) cmd_config "${2:-}" ;;
+    help|--help|-h) usage ;;
+    *) echo "Error: Unknown command '$1'"; usage; exit 1 ;;
+esac
