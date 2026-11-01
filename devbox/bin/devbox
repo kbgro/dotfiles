@@ -16,7 +16,8 @@ usage() {
         '  devbox destroy  <machine>' \
         '  devbox status  <machine>' \
         '  devbox init  <machine> [--force]' \
-        '  devbox up  <machine>'
+        '  devbox up  <machine>' \
+        '  devbox setup  <machine>'
 }
 
 validate_machine_name() {
@@ -217,6 +218,41 @@ up_machine() {
     )
 }
 
+setup_machine() {
+    local requested="$1"
+    local runtime_dir="$RUNTIME_DIR/machines/$requested"
+    local vagrantfile="$runtime_dir/Vagrantfile"
+    local fall_file="$DEVBOX_DIR/../fall/bin/fall"
+
+    load_machine "$requested" || return $?
+
+    if [[ ! -f "$vagrantfile" ]]; then
+        printf 'Not initialized: %s\n' "$requested" >&2
+        printf 'Run: devbox init %s\n' "$requested" >&2
+        return 1
+    fi
+
+    if ! command -v vagrant >/dev/null 2>&1; then
+        printf 'Vagrant is not installed or is not on PATH.\n' >&2
+        return 1
+    fi
+
+    if [[ ! -x "$fall_file" ]]; then
+        printf 'fall is missing or not executable: %s\n' "$fall_file" >&2
+        return 1
+    fi
+
+    (
+        cd -- "$runtime_dir" || exit 1
+        vagrant upload "$fall_file" /tmp/fall
+        vagrant ssh -c 'mkdir -p "$HOME/.local/bin" && install -m 755 /tmp/fall "$HOME/.local/bin/fall" && rm -f /tmp/fall && if ! grep -qxF "export PATH=\"\$PATH:\$HOME/.local/bin\"" "$HOME/.bashrc" 2>/dev/null; then printf "%s\\n" "export PATH=\"\$PATH:\$HOME/.local/bin\"" >> "$HOME/.bashrc"; fi'
+    )
+
+    printf 'Installed fall in %s:~/.local/bin/fall\n' "$requested"
+    printf 'Connect with: devbox ssh %s\n' "$requested"
+    printf 'Then run: fall list\n'
+}
+
 status_machine() {
     local requested="$1"
     local runtime_dir="$RUNTIME_DIR/machines/$requested"
@@ -346,6 +382,10 @@ main() {
         up)
             (($# == 2)) || { usage >&2; return 2; }
             up_machine "$2"
+            ;;
+        setup)
+            (($# == 2)) || { usage >&2; return 2; }
+            setup_machine "$2"
             ;;
         status)
             (($# == 2)) || { usage >&2; return 2; }

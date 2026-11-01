@@ -81,6 +81,19 @@ For fall:
 
 Install the .NET SDK with `fall install dotnet`. It downloads the pinned .NET 10.0.403 Linux x64 SDK tarball, extracts it under `~/.dotnet`, and configures Bash, Zsh, and POSIX login profiles.
 
+Install Docker on Debian with `fall install docker`. This adds the current user to Docker's group; log out and back in afterward. Docker group membership grants root-level control of the host.
+
+For a devbox guest, start the machine and copy `fall` into the guest user's local bin:
+
+```sh
+devbox up agent-01
+devbox setup agent-01
+devbox ssh agent-01
+fall list
+```
+
+Choose and install guest packages from the SSH session, for example `fall install core`.
+
 Adjust the paths as needed for your environment.
 
 ## Notes

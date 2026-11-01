@@ -164,6 +164,48 @@ remove_dotnet() {
 upgrade_dotnet() { install_dotnet; }
 version_dotnet() { [ ! -x "$HOME/.dotnet/dotnet" ] || "$HOME/.dotnet/dotnet" --version 2>/dev/null; }
 
+install_docker() {
+    local codename arch docker_user
+    [ -r /etc/os-release ] || { echo 'Error: /etc/os-release not found'; return 1; }
+    . /etc/os-release
+    [ "$ID" = debian ] || { echo "Error: Docker recipe requires Debian, found ${ID:-unknown}"; return 1; }
+    codename="${VERSION_CODENAME:-}"
+    [ -n "$codename" ] || { echo 'Error: Debian release codename not found'; return 1; }
+    arch=$(dpkg --print-architecture) || return 1
+
+    sudo apt update
+    sudo apt install -y ca-certificates curl
+    sudo install -m 0755 -d /etc/apt/keyrings
+    sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+    sudo chmod a+r /etc/apt/keyrings/docker.asc
+    sudo tee /etc/apt/sources.list.d/docker.sources >/dev/null <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/debian
+Suites: $codename
+Components: stable
+Architectures: $arch
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
+    sudo apt update
+    sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+    if command -v systemctl >/dev/null 2>&1; then
+        sudo systemctl enable --now docker
+    fi
+    docker_user="${SUDO_USER:-$USER}"
+    sudo groupadd docker 2>/dev/null || true
+    sudo usermod -aG docker "$docker_user"
+    echo "Added $docker_user to the docker group; log out and back in before using Docker without sudo."
+}
+remove_docker() {
+    local docker_user="${SUDO_USER:-$USER}"
+    sudo apt remove -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+    sudo rm -f /etc/apt/sources.list.d/docker.sources /etc/apt/keyrings/docker.asc
+    sudo gpasswd -d "$docker_user" docker 2>/dev/null || true
+}
+upgrade_docker() { install_docker; }
+version_docker() { docker --version 2>/dev/null | awk '{print $3}' | tr -d ','; }
+
 install_android() {
     local zip_file="$1" temp_dir cmdline_tools_dir
     [ -f "$HOME/.sdkman/bin/sdkman-init.sh" ] && . "$HOME/.sdkman/bin/sdkman-init.sh"
@@ -242,7 +284,7 @@ config_ubuntu_news() {
     sudo apt remove -y ubuntu-advantage-tools ubuntu-pro-client
 }
 
-PACKAGES=(core rust starship nvm nvim just alacritty qemu vagrant qt dotnet android font-nerd bluetooth)
+PACKAGES=(core rust starship nvm nvim just alacritty qemu vagrant qt dotnet docker android font-nerd bluetooth)
 declare -A PACKAGE_VERSION PACKAGE_DESCRIPTION PACKAGE_DEPENDENCIES PACKAGE_CATEGORY PACKAGE_INSTALL PACKAGE_REMOVE PACKAGE_UPGRADE
 PACKAGE_VERSION[core]=1.0; PACKAGE_DESCRIPTION[core]='Core development tools and utilities'; PACKAGE_DEPENDENCIES[core]='build-essential,curl,git,tmux,zoxide,unzip,wget,fzf,tree,git-flow'; PACKAGE_CATEGORY[core]=essential; PACKAGE_INSTALL[core]=install_core; PACKAGE_REMOVE[core]=remove_core
 PACKAGE_VERSION[rust]=latest; PACKAGE_DESCRIPTION[rust]='Rust programming language'; PACKAGE_DEPENDENCIES[rust]=rustup; PACKAGE_CATEGORY[rust]=language; PACKAGE_INSTALL[rust]=install_rust; PACKAGE_REMOVE[rust]=remove_rust; PACKAGE_UPGRADE[rust]=upgrade_rust
@@ -255,6 +297,7 @@ PACKAGE_VERSION[qemu]=latest; PACKAGE_DESCRIPTION[qemu]='Virtualization tools'; 
 PACKAGE_VERSION[vagrant]=latest; PACKAGE_DESCRIPTION[vagrant]='Vagrant virtualization'; PACKAGE_DEPENDENCIES[vagrant]=vagrant; PACKAGE_CATEGORY[vagrant]=virtualization; PACKAGE_INSTALL[vagrant]=install_vagrant; PACKAGE_REMOVE[vagrant]=remove_vagrant
 PACKAGE_VERSION[qt]=latest; PACKAGE_DESCRIPTION[qt]='Qt development libraries'; PACKAGE_DEPENDENCIES[qt]='libgl1-mesa-dev,libxcb-cursor-dev,openjdk-17-jdk'; PACKAGE_CATEGORY[qt]=framework; PACKAGE_INSTALL[qt]=install_qt; PACKAGE_REMOVE[qt]=remove_qt
 PACKAGE_VERSION[dotnet]=10.0.403; PACKAGE_DESCRIPTION[dotnet]='.NET SDK'; PACKAGE_DEPENDENCIES[dotnet]='curl,tar'; PACKAGE_CATEGORY[dotnet]=language; PACKAGE_INSTALL[dotnet]=install_dotnet; PACKAGE_REMOVE[dotnet]=remove_dotnet; PACKAGE_UPGRADE[dotnet]=upgrade_dotnet
+PACKAGE_VERSION[docker]=latest; PACKAGE_DESCRIPTION[docker]='Docker Engine and Compose'; PACKAGE_DEPENDENCIES[docker]='ca-certificates,curl,apt'; PACKAGE_CATEGORY[docker]=container; PACKAGE_INSTALL[docker]=install_docker; PACKAGE_REMOVE[docker]=remove_docker; PACKAGE_UPGRADE[docker]=upgrade_docker
 PACKAGE_VERSION[android]=latest; PACKAGE_DESCRIPTION[android]='Android development tools'; PACKAGE_DEPENDENCIES[android]='sdkman,java,kotlin,gradle'; PACKAGE_CATEGORY[android]=mobile; PACKAGE_INSTALL[android]=install_android; PACKAGE_REMOVE[android]=remove_android
 PACKAGE_VERSION[font-nerd]=3.4.0; PACKAGE_DESCRIPTION[font-nerd]='JetBrains Mono Nerd Font'; PACKAGE_DEPENDENCIES[font-nerd]=fonts; PACKAGE_CATEGORY[font-nerd]=font; PACKAGE_INSTALL[font-nerd]=install_font_nerd; PACKAGE_REMOVE[font-nerd]=remove_font_nerd
 PACKAGE_VERSION[bluetooth]=latest; PACKAGE_DESCRIPTION[bluetooth]='Bluetooth support'; PACKAGE_DEPENDENCIES[bluetooth]='bluetooth,bluez'; PACKAGE_CATEGORY[bluetooth]=system; PACKAGE_INSTALL[bluetooth]=install_bluetooth; PACKAGE_REMOVE[bluetooth]=remove_bluetooth
