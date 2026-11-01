@@ -6,6 +6,7 @@ Structure
 ```
 .
 ├── alacritty/    # Alacritty terminal configuration
+├── fall/         # Personal development package manager
 ├── nvim/         # Neovim configuration
 ├── opencode/     # OpenCode configuration and themes
 └── tmux/         # Tmux configuration and extensions
@@ -73,6 +74,12 @@ ln -s "$HOME/dotfiles/opencode" "$HOME/.config/opencode"
 For tmux:
 
 `ln -s "$HOME/dotfiles/tmux/tmux.conf" "$HOME/.tmux.conf"`
+
+For fall:
+
+`mkdir -p "$HOME/.local/bin" && ln -s "$HOME/dotfiles/fall/bin/fall" "$HOME/.local/bin/fall"`
+
+Install the .NET SDK with `fall install dotnet`. It downloads the pinned .NET 10.0.403 Linux x64 SDK tarball, extracts it under `~/.dotnet`, and configures Bash, Zsh, and POSIX login profiles.
 
 Adjust the paths as needed for your environment.
 
