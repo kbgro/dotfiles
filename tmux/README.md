@@ -68,3 +68,12 @@ scrollback are not restored, except that panes running `nvim`, `lazygit`,
 again. To restore an older snapshot: `tmrestore ~/.local/state/tmux/snapshot.tsv.1`.
 
 Test: `tmux/extensions/test/tmsave` (uses its own tmux server).
+
+### Huddle notes
+
+`huddle` works on `~/work/Huddle` (override with `HUDDLE_DIR`).
+
+* `prefix+H` searches every note as you type (ripgrep, smart case) with a
+  preview; Enter opens the line in nvim in a new `huddle` window.
+* `prefix+T` shows today's note (`Notes/DD.MM.YY/today.md`) rendered with glow,
+  or the latest note if today's doesn't exist yet. `q` closes it.

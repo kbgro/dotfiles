@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Huddle work notes from tmux.
+#   huddle search   live ripgrep + fzf over all notes; Enter opens the line in nvim in a new window
+#   huddle today    today's note rendered with glow (falls back to the latest note)
+set -euo pipefail
+dir=${HUDDLE_DIR:-$HOME/work/Huddle}
+
+# Notes/DD.MM.YY/today.md, newest by date (folder names don't sort as dates)
+latest_note() {
+    local d
+    d=$(ls "$dir/Notes" | awk -F. 'NF == 3 { print $3 $2 $1, $0 }' | sort | tail -1 | cut -d' ' -f2)
+    [[ -n $d ]] && printf '%s\n' "$dir/Notes/$d/today.md"
+}
+
+case ${1:-} in
+search)
+    cd "$dir"
+    rg_cmd='rg --line-number --no-heading --color=always --smart-case --glob "*.md" -e'
+    sel=$(fzf --ansi --disabled --reverse --border \
+            --prompt='Huddle > ' \
+            --bind "start:reload:$rg_cmd {q} . || true" \
+            --bind "change:reload:$rg_cmd {q} . || true" \
+            --delimiter=: \
+            --preview="awk -v n={2} '{ printf \"%s%5d  %s\033[0m\n\", (NR == n ? \"\033[1;33m\" : \"\"), NR, \$0 }' {1}" \
+            --preview-window='right:55%:+{2}-/2' \
+        < /dev/null) || exit 0
+    file=${sel%%:*}; rest=${sel#*:}; line=${rest%%:*}
+    tmux new-window -n huddle -c "$dir" "nvim +$line $(printf '%q' "$file")"
+    ;;
+today)
+    note="$dir/Notes/$(date +%d.%m.%y)/today.md"
+    [[ -f $note ]] || note=$(latest_note)
+    [[ -n $note && -f $note ]] || { echo "No notes in $dir/Notes"; read -rn1; exit 0; }
+    glow -p -w "$(( $(tput cols) - 4 ))" "$note"
+    ;;
+*)
+    echo "usage: huddle search|today" >&2; exit 2 ;;
+esac
