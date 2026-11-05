@@ -4,6 +4,11 @@
 # gdbus ships with GLib, so no libnotify-bin needed.
 session=$1 index=$2 name=$3 active=$4
 
+# visual-bell (needed to keep the bell away from Alacritty) prints "Bell in ..." on the status line; clear it
+tmux list-clients -F '#{client_name}' | while read -r client; do
+    tmux display-message -c "$client" -d 1 ''
+done
+
 # skip when you're already looking at it: active window in a session shown by the focused client
 if [[ $active == 1 ]] && tmux list-clients -t "$session" -F '#{client_flags}' | grep -q focused; then
     exit 0
