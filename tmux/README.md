@@ -29,7 +29,13 @@ file is absent or empty, `$HOME` is used.
 
 The tmux bindings are `prefix+F` for directories and `prefix+G` for Git
 repositories/worktrees. `prefix+P` opens active Azure DevOps pull requests
-with a live preview. Existing session and window picker bindings are unchanged.
+with a live preview. `prefix+g` opens lazygit (`fall install lazygit`) in a
+popup for the current pane's directory. `prefix+s` and `prefix+w` are fzf
+pickers for sessions and for windows across all sessions.
+
+In copy mode (`prefix+[` or mouse scroll) the keys work like vim: `v` starts a
+selection, `Ctrl-v` toggles a block selection, `y` copies to the system
+clipboard and exits.
 
 ### Azure pull requests
 

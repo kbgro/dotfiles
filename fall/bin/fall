@@ -104,6 +104,8 @@ version_just() { just --version 2>/dev/null | awk '{print $2}'; }
 
 install_alacritty() { sudo apt install -y alacritty; mkdir -p "$HOME/.config/alacritty"; }
 remove_alacritty() { sudo apt remove -y alacritty; }
+install_lazygit() { sudo apt install -y lazygit; }
+remove_lazygit() { sudo apt remove -y lazygit; }
 install_qemu() { sudo apt-get install -y qemu-kvm bridge-utils virt-manager libosinfo-bin; }
 remove_qemu() { sudo apt-get remove -y qemu-kvm bridge-utils virt-manager libosinfo-bin; }
 
@@ -284,7 +286,7 @@ config_ubuntu_news() {
     sudo apt remove -y ubuntu-advantage-tools ubuntu-pro-client
 }
 
-PACKAGES=(core rust starship nvm nvim just alacritty qemu vagrant qt dotnet docker android font-nerd bluetooth)
+PACKAGES=(core rust starship nvm nvim just lazygit alacritty qemu vagrant qt dotnet docker android font-nerd bluetooth)
 declare -A PACKAGE_VERSION PACKAGE_DESCRIPTION PACKAGE_DEPENDENCIES PACKAGE_CATEGORY PACKAGE_INSTALL PACKAGE_REMOVE PACKAGE_UPGRADE
 PACKAGE_VERSION[core]=1.0; PACKAGE_DESCRIPTION[core]='Core development tools and utilities'; PACKAGE_DEPENDENCIES[core]='build-essential,curl,git,tmux,zoxide,unzip,wget,fzf,tree,git-flow'; PACKAGE_CATEGORY[core]=essential; PACKAGE_INSTALL[core]=install_core; PACKAGE_REMOVE[core]=remove_core
 PACKAGE_VERSION[rust]=latest; PACKAGE_DESCRIPTION[rust]='Rust programming language'; PACKAGE_DEPENDENCIES[rust]=rustup; PACKAGE_CATEGORY[rust]=language; PACKAGE_INSTALL[rust]=install_rust; PACKAGE_REMOVE[rust]=remove_rust; PACKAGE_UPGRADE[rust]=upgrade_rust
@@ -292,6 +294,7 @@ PACKAGE_VERSION[starship]=latest; PACKAGE_DESCRIPTION[starship]='Cross-shell pro
 PACKAGE_VERSION[nvm]=0.40.3; PACKAGE_DESCRIPTION[nvm]='Node Version Manager'; PACKAGE_DEPENDENCIES[nvm]=nvm; PACKAGE_CATEGORY[nvm]=language; PACKAGE_INSTALL[nvm]=install_nvm; PACKAGE_REMOVE[nvm]=remove_nvm
 PACKAGE_VERSION[nvim]=0.12; PACKAGE_DESCRIPTION[nvim]='Neovim text editor'; PACKAGE_DEPENDENCIES[nvim]=neovim; PACKAGE_CATEGORY[nvim]=editor; PACKAGE_INSTALL[nvim]=install_nvim; PACKAGE_REMOVE[nvim]=remove_nvim; PACKAGE_UPGRADE[nvim]=upgrade_nvim
 PACKAGE_VERSION[just]=latest; PACKAGE_DESCRIPTION[just]='Command runner'; PACKAGE_DEPENDENCIES[just]=just; PACKAGE_CATEGORY[just]=tool; PACKAGE_INSTALL[just]=install_just; PACKAGE_REMOVE[just]=remove_just
+PACKAGE_VERSION[lazygit]=latest; PACKAGE_DESCRIPTION[lazygit]='Terminal UI for git'; PACKAGE_DEPENDENCIES[lazygit]=lazygit; PACKAGE_CATEGORY[lazygit]=tool; PACKAGE_INSTALL[lazygit]=install_lazygit; PACKAGE_REMOVE[lazygit]=remove_lazygit
 PACKAGE_VERSION[alacritty]=latest; PACKAGE_DESCRIPTION[alacritty]='GPU-accelerated terminal'; PACKAGE_DEPENDENCIES[alacritty]=alacritty; PACKAGE_CATEGORY[alacritty]=terminal; PACKAGE_INSTALL[alacritty]=install_alacritty; PACKAGE_REMOVE[alacritty]=remove_alacritty
 PACKAGE_VERSION[qemu]=latest; PACKAGE_DESCRIPTION[qemu]='Virtualization tools'; PACKAGE_DEPENDENCIES[qemu]='qemu-kvm,virt-manager'; PACKAGE_CATEGORY[qemu]=virtualization; PACKAGE_INSTALL[qemu]=install_qemu; PACKAGE_REMOVE[qemu]=remove_qemu
 PACKAGE_VERSION[vagrant]=latest; PACKAGE_DESCRIPTION[vagrant]='Vagrant virtualization'; PACKAGE_DEPENDENCIES[vagrant]=vagrant; PACKAGE_CATEGORY[vagrant]=virtualization; PACKAGE_INSTALL[vagrant]=install_vagrant; PACKAGE_REMOVE[vagrant]=remove_vagrant
