@@ -41,14 +41,9 @@ permissions.
 
 ### Bash command notifications
 
-Install the Bash prompt hook once:
-
-```sh
-~/dotfiles/tmux/extensions/bin/install-tmux-notify
-```
-
-It adds an idempotent source line to `~/.bashrc`. Commands that run for five
-seconds or longer emit a terminal bell when their prompt returns, allowing the
-existing tmux window notification marker to show which window finished. The
-hook preserves the existing Starship and Bash prompt commands.
+`bash/rc.bash` loads the prompt hook (run `~/dotfiles/bash/setup.sh` once).
+Commands that run for five seconds or longer emit a terminal bell when their
+prompt returns. tmux then marks the window in the status bar, lists it first
+with a 🔔 in the `prefix+w` picker, and sends a desktop notification naming
+`session:window` (skipped when you are already looking at that window).
 

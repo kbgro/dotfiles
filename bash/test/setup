@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT=$(cd -- "$(dirname -- "$0")/../.." && pwd -P)
+SETUP="$ROOT/bash/setup.sh"
+LINE="source \"$ROOT/bash/rc.bash\""
+WORK=$(mktemp -d)
+trap 'rm -rf -- "$WORK"' EXIT
+
+fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
+
+cat > "$WORK/bashrc" <<'RC'
+# existing config
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
+[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
+source "/old/path/tmux/extensions/bin/tmux-notify"
+RC
+"$SETUP" "$WORK/bashrc" >/dev/null
+cp "$WORK/bashrc" "$WORK/first"
+"$SETUP" "$WORK/bashrc" >/dev/null
+cmp -s "$WORK/first" "$WORK/bashrc" || fail 'second run changed the file'
+[[ "$(grep -Fxc "$LINE" "$WORK/bashrc")" -eq 1 ]] || fail 'source line missing or duplicated'
+! grep -q 'NVM_DIR\|tmux-notify' "$WORK/bashrc" || fail 'replaced lines were kept'
+grep -qx '# existing config' "$WORK/bashrc" || fail 'existing config was lost'
+[[ -f "$WORK/bashrc.bak" ]] || fail 'no backup written'
+
+printf '# SDKMAN must remain last\nexport SDKMAN_DIR=/tmp/sdkman\n' > "$WORK/bashrc-sdkman"
+"$SETUP" "$WORK/bashrc-sdkman" >/dev/null
+source_line=$(grep -nFx "$LINE" "$WORK/bashrc-sdkman" | cut -d: -f1)
+sdkman_line=$(grep -n 'SDKMAN_DIR' "$WORK/bashrc-sdkman" | cut -d: -f1)
+((source_line < sdkman_line)) || fail 'setup placed rc.bash after SDKMAN'
+
+# rc.bash must keep the exit status the prompt shows
+out=$(bash --norc -ic 'PROMPT_COMMAND=""; source "$1"; false; _history_append; echo $?' _ "$ROOT/bash/rc.bash" 2>/dev/null | tail -1)
+[[ "$out" == 1 ]] || fail "history hook clobbered \$? (got $out)"
+
+printf 'bash setup tests passed\n'

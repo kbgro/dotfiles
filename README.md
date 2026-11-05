@@ -6,6 +6,8 @@ Structure
 ```
 .
 ├── alacritty/    # Alacritty terminal configuration
+├── bash/         # Bash config hooked into ~/.bashrc
+├── devbox/       # Local VM manager
 ├── fall/         # Personal development package manager
 ├── nvim/         # Neovim configuration
 ├── opencode/     # OpenCode configuration and themes
@@ -18,8 +20,21 @@ Structure
 
 Configuration for the Alacritty terminal emulator.
 
-* alacritty.toml — current configuration
-* alacritty.yml — legacy/alternative configuration
+* alacritty.toml — configuration
+
+### Bash
+
+The dotfiles own only part of the shell setup; `~/.bashrc` stays machine-local.
+
+* rc.bash — history (100k lines, shared across tmux panes), Starship, zoxide,
+  fzf key bindings (Ctrl-R history, Ctrl-T files, Alt-C cd), lazy nvm,
+  tmux command notifications, aliases
+* setup.sh — adds one line to `~/.bashrc` that sources rc.bash (safe to
+  re-run, keeps a `~/.bashrc.bak`), and removes the nvm installer's eager
+  loader lines, which rc.bash replaces
+
+`nvm` itself loads only when you first run it; the newest installed Node is put
+on `PATH` directly so `node`, `npm` and global tools work without it.
 
 ### Neovim
 
@@ -52,6 +67,9 @@ Configuration and extensions for tmux.
 * extensions/ — custom tmux extensions
 * README.md — tmux-specific documentation
 
+Tests for the scripts live next to them: `bash/test/setup` and
+`tmux/extensions/test/*`.
+
 ## Installation
 
 Clone the repository:
@@ -71,9 +89,15 @@ ln -s "$HOME/dotfiles/alacritty" "$HOME/.config/alacritty"
 ln -s "$HOME/dotfiles/opencode" "$HOME/.config/opencode"
 ```
 
-For tmux:
+For tmux (the reload binding expects this path):
 
-`ln -s "$HOME/dotfiles/tmux/tmux.conf" "$HOME/.tmux.conf"`
+`ln -s "$HOME/dotfiles/tmux" "$HOME/.config/tmux"`
+
+For Bash:
+
+`~/dotfiles/bash/setup.sh`
+
+Re-run it after installing nvm (the nvm installer adds its own loader back).
 
 For fall:
 
