@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Snapshot every tmux pane (session, window, folder, layout) for tmrestore.
+# Usage: tmsave          save now
+#        tmsave --auto   from the status bar: at most every 5 minutes, and only after tmrestore has run
+#                        on this server, so a fresh server after a crash can't overwrite the good snapshot
+set -u
+state=${XDG_STATE_HOME:-$HOME/.local/state}/tmux
+snap=$state/snapshot.tsv
+keep=5 # older snapshots kept as snapshot.tsv.1 .. .5
+
+if [[ ${1:-} == --auto ]]; then
+    [[ $(tmux show -gqv @tmrestored) == 1 ]] || exit 0
+    age=$(( $(date +%s) - $(stat -c %Y "$snap" 2>/dev/null || echo 0) ))
+    (( age >= 300 )) || exit 0
+fi
+
+mkdir -p "$state"
+exec 9>"$state/lock"
+flock -n 9 || exit 0 # every attached session's status bar runs this; one save at a time
+tmp=$(mktemp "$state/snapshot.XXXXXX")
+tmux list-panes -a -F '#{session_name}	#{window_index}	#{window_name}	#{automatic-rename}	#{window_active}	#{window_width}	#{window_height}	#{window_layout}	#{pane_index}	#{pane_active}	#{pane_current_path}	#{pane_current_command}' \
+    > "$tmp" 2>/dev/null
+[[ -s $tmp ]] || { rm -f "$tmp"; exit 1; } # no server or no panes: keep the old snapshot
+
+if cmp -s "$tmp" "$snap"; then
+    rm -f "$tmp"; touch "$snap" # unchanged; touch resets the 5-minute timer
+    exit 0
+fi
+for (( i = keep - 1; i >= 1; i-- )); do
+    [[ ! -f $snap.$i ]] || mv -f "$snap.$i" "$snap.$((i + 1))"
+done
+[[ ! -f $snap ]] || mv -f "$snap" "$snap.1"
+mv -f "$tmp" "$snap"

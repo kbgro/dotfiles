@@ -53,3 +53,18 @@ prompt returns. tmux then marks the window in the status bar, lists it first
 with a 🔔 in the `prefix+w` picker, and sends a desktop notification naming
 `session:window` (skipped when you are already looking at that window).
 
+### Session snapshots
+
+`tmsave` records every session, window (name, layout) and pane folder in
+`~/.local/state/tmux/snapshot.tsv`, keeping the previous five as `.1`–`.5`.
+The status bar runs it every 5 minutes, but only once `tmrestore` has run on
+the current server, so a fresh server after a crash cannot overwrite the good
+snapshot. `prefix+C-s` saves now.
+
+`tmrestore` runs once when the tmux server starts and recreates any saved
+session that does not already exist; `prefix+C-r` runs it again. Programs and
+scrollback are not restored, except that panes running `nvim`, `lazygit`,
+`htop` or `btop` (override with `TMRESTORE_CMDS`) get the command started
+again. To restore an older snapshot: `tmrestore ~/.local/state/tmux/snapshot.tsv.1`.
+
+Test: `tmux/extensions/test/tmsave` (uses its own tmux server).

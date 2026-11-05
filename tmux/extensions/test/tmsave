@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# Runs on a private tmux server (own socket dir, TMUX unset): never touches your real sessions.
+set -euo pipefail
+
+ROOT=$(cd -- "$(dirname -- "$0")/../../.." && pwd -P)
+BIN="$ROOT/tmux/extensions/bin"
+WORK=$(mktemp -d)
+export TMUX_TMPDIR=$WORK XDG_STATE_HOME=$WORK/state TMRESTORE_CMDS=''
+unset TMUX
+SNAP=$XDG_STATE_HOME/tmux/snapshot.tsv
+trap 'tmux kill-server 2>/dev/null || true; rm -rf -- "$WORK"' EXIT
+
+fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
+start() { tmux -f /dev/null new-session -d -s "$1" -x 120 -y 40 -c "$WORK" \; set -g default-command 'sleep 600'; }
+shape() { tmux list-panes -a -F '#{session_name}|#{window_index}|#{window_name}|#{window_active}|#{pane_index}|#{pane_active}|#{pane_width}x#{pane_height}|#{pane_current_path}' | grep -v '^keep|' | sort; }
+
+mkdir -p "$WORK/a" "$WORK/b" "$WORK/c"
+start 'proj/one'
+tmux rename-window -t 'proj/one:0' editor
+tmux split-window -h -t 'proj/one:0' -c "$WORK/a"
+tmux split-window -v -t 'proj/one:0.1' -c "$WORK/b"
+tmux new-window -t 'proj/one' -n logs -c "$WORK/c"
+tmux new-session -d -s two -c "$WORK/b"
+tmux select-window -t 'proj/one:0'; tmux select-pane -t 'proj/one:0.1'
+sleep 0.3
+
+"$BIN/tmsave" --auto
+[[ ! -f $SNAP ]] || fail 'auto-save ran before tmrestore on a fresh server'
+for _ in 1 2 3 4; do "$BIN/tmsave" & done; wait # status bars of several sessions fire together
+[[ -s $SNAP ]] || fail 'concurrent saves left no snapshot'
+before=$(shape)
+
+tmux kill-server; sleep 0.3
+start keep
+"$BIN/tmrestore" --startup
+sleep 0.5
+after=$(shape)
+[[ "$before" == "$after" ]] || fail "restored state differs:
+--- before
+$before
+--- after
+$after"
+
+"$BIN/tmrestore"
+[[ "$(shape)" == "$after" ]] || fail 'second restore changed existing sessions'
+"$BIN/tmrestore" --startup
+[[ "$(shape)" == "$after" ]] || fail '--startup ran twice on one server'
+
+tmux kill-session -t two
+touch -d '10 minutes ago' "$SNAP"
+"$BIN/tmsave" --auto
+[[ -f $SNAP.1 ]] || fail 'changed snapshot was not rotated'
+grep -q '^two	' "$SNAP.1" || fail 'previous snapshot lost'
+! grep -q '^two	' "$SNAP" || fail 'new snapshot still has the killed session'
+
+printf 'tmsave/tmrestore tests passed\n'

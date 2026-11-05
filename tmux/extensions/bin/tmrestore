@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Recreate tmux sessions from tmsave's snapshot: windows, names, pane folders and layouts.
+# Sessions that already exist are left alone. Running programs and scrollback are not restored;
+# panes that ran a command in TMRESTORE_CMDS get it started again.
+# Usage: tmrestore [--startup] [snapshot]   --startup: run once per server (from tmux.conf)
+set -u
+startup=0
+[[ ${1:-} == --startup ]] && { startup=1; shift; }
+snap=${1:-${XDG_STATE_HOME:-$HOME/.local/state}/tmux/snapshot.tsv}
+restart_cmds=" ${TMRESTORE_CMDS-nvim lazygit htop btop} "
+
+if (( startup )) && [[ $(tmux show -gqv @tmrestored) == 1 ]]; then exit 0; fi
+tmux set -g @tmrestored 1 # lets tmsave --auto start saving
+[[ -f $snap ]] || exit 0
+
+declare -A state=() win=() layout=() last=() # state[session]: made|skip; win["session<TAB>index"]: new target
+active_windows=() active_panes=()
+while IFS=$'\t' read -r s widx wname wauto wactive ww wh wlayout pidx pactive path cmd; do
+    [[ ${state[$s]:-} == skip ]] && continue
+    [[ -d $path ]] || path=$HOME
+    key="$s"$'\t'"$widx"
+    if [[ -z ${win[$key]:-} ]]; then
+        if [[ -z ${state[$s]:-} ]]; then
+            if tmux has-session -t "=$s" 2>/dev/null; then state[$s]=skip; continue; fi
+            out=$(tmux new-session -d -P -F '#{window_index} #{pane_id}' -s "$s" -n "$wname" -c "$path" -x "$ww" -y "$wh") || continue
+            state[$s]=made
+        else
+            out=$(tmux new-window -d -P -F '#{window_index} #{pane_id}' -t "=$s:" -n "$wname" -c "$path") || continue
+        fi
+        win[$key]="=$s:${out%% *}"
+        layout[${win[$key]}]=$wlayout
+        [[ $wauto == 1 ]] && tmux set -w -t "${win[$key]}" automatic-rename on # -n turned it off
+        [[ $wactive == 1 ]] && active_windows+=("${win[$key]}")
+    else
+        # split the window's last pane so panes keep their saved order
+        out=$(tmux split-window -d -P -F '#{window_index} #{pane_id}' -t "${last[$key]}" -c "$path") || continue
+        tmux select-layout -t "${win[$key]}" tiled # keep room for the next split
+    fi
+    pane=${out#* }
+    last[$key]=$pane
+    [[ $pactive == 1 ]] && active_panes+=("$pane")
+    [[ $restart_cmds == *" $cmd "* ]] && tmux send-keys -t "$pane" "$cmd" Enter
+done < "$snap"
+
+for target in "${!layout[@]}"; do tmux select-layout -t "$target" "${layout[$target]}" 2>/dev/null; done
+for target in "${active_panes[@]}"; do tmux select-pane -t "$target"; done
+for target in "${active_windows[@]}"; do tmux select-window -t "$target"; done
+exit 0
