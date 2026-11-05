@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Desktop notification naming the tmux session/window that rang the bell.
+# Usage: tmux-bell-notify <session> <window index> <window name> <window active 0|1>
+# gdbus ships with GLib, so no libnotify-bin needed.
+session=$1 index=$2 name=$3 active=$4
+
+# skip when you're already looking at it: active window in a session shown by the focused client
+if [[ $active == 1 ]] && tmux list-clients -t "$session" -F '#{client_flags}' | grep -q focused; then
+    exit 0
+fi
+
+exec gdbus call --session \
+    --dest org.freedesktop.Notifications \
+    --object-path /org/freedesktop/Notifications \
+    --method org.freedesktop.Notifications.Notify \
+    tmux 0 utilities-terminal "🔔 $session:$index" "$name" '[]' '{}' 5000 >/dev/null

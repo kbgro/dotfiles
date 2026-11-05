@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# fzf picker over windows of all sessions; windows that rang the bell come first, marked with a yellow bell.
+tmux list-windows -a -F '#{?window_bell_flag,0,1} #{session_name}:#{window_index} #{window_name}' |
+    sort -s -k1,1 |
+    awk '{ bell = $1; sub(/^[01] /, ""); print (bell == "0") ? $0 " \033[1;33m🔔\033[0m" : $0 }' |
+    fzf --ansi --reverse --border \
+        --prompt='Windows > ' \
+        --preview='tmux capture-pane -ept {1}:{2}' \
+        --preview-window='right:60%' \
+        --delimiter='[: ]' |
+    cut -d ' ' -f 1 |
+    xargs -r -I {} tmux switch-client -t '{}'
