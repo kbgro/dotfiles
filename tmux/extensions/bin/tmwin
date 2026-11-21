@@ -9,4 +9,4 @@ tmux list-windows -a -F '#{?window_bell_flag,0,1} #{session_name}:#{window_index
         --preview-window='right:60%' \
         --delimiter='[: ]' |
     cut -d ' ' -f 1 |
-    xargs -r -I {} tmux switch-client -t '{}'
+    xargs -r -I {} tmux switch-client ${POPUP_CLIENT:+-c "$POPUP_CLIENT"} -t '{}'

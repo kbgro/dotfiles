@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# The picker key bindings from tmux.conf, pressed on one of two attached clients: only that client
+# may move, and new windows must land in its session. Private tmux server; never touches yours.
+set -euo pipefail
+
+ROOT=$(cd -- "$(dirname -- "$0")/../../.." && pwd -P)
+W=$(mktemp -d)
+export TMUX_TMPDIR=$W XDG_CONFIG_HOME=$W/config XDG_STATE_HOME=$W/state HUDDLE_DIR=$W/huddle
+unset TMUX
+trap 'tmux kill-server 2>/dev/null || true; rm -rf -- "$W"' EXIT
+fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
+
+mkdir -p "$W/Projects/Dalvine" "$W/work/dev/MailRush" "$XDG_CONFIG_HOME/tmux"
+printf '%s\n' "$W/Projects" > "$XDG_CONFIG_HOME/tmux/open-roots"
+printf '%s\n' "$W/work" "$W/Projects" > "$XDG_CONFIG_HOME/tmux/session-roots"
+mkdir -p "$W/items/2449-queue" "$W/huddle/Notes/01.01.26" "$W/bin"
+echo '# handover' > "$W/items/2449-queue/handover.md"
+echo 'needle line' > "$W/huddle/Notes/01.01.26/today.md"
+for f in claude nvim; do printf '#!/bin/sh\nsleep 600\n' > "$W/bin/$f"; chmod +x "$W/bin/$f"; done # never the real ones
+
+# the real bindings for F, S, s and w, pointed at this checkout and the temp folders
+awk '/^bind-key [FSswiH] /{on=1} on{print} on && !/\\$/{on=0}' "$ROOT/tmux/tmux.conf" |
+    sed -e "s|\$HOME/dotfiles|$ROOT|g" > "$W/keys.conf"
+[[ $(grep -c '^bind-key' "$W/keys.conf") -eq 6 ]] || fail 'could not extract the bindings'
+
+tmux -f /dev/null new-session -d -s A -x 160 -y 40 -c "$W" \; set -g default-command "env PATH=$W/bin:$PATH bash --norc --noprofile" \
+    \; set -g prefix C-a \; source-file "$W/keys.conf"
+tmux new-session -d -s B -c "$W"
+for s in A B; do
+    ( TERM=xterm-256color timeout 40 script -qfc "stty cols 160 rows 40; tmux attach -t $s" /dev/null \
+        < <(sleep 40) >/dev/null 2>&1 & )
+    sleep 1
+done
+client_on() { tmux list-clients -F '#{client_name} #{session_name}' | awk -v s="$1" '$2 == s { print $1; exit }'; }
+CA=$(client_on A); CB=$(client_on B)
+[[ -n $CA && -n $CB ]] || fail 'clients did not attach'
+on() { tmux list-clients -F '#{client_name} #{session_name}' | awk -v c="$1" '$1 == c { print $2 }'; }
+press() { # client key query
+    tmux send-keys -K -c "$1" C-a "$2"; sleep 1.5
+    tmux send-keys -K -c "$1" -l "$3"; sleep 0.7
+    tmux send-keys -K -c "$1" Enter; sleep 1.2
+}
+
+press "$CB" S 'Dalvine'
+[[ $(on "$CB") == Projects/Dalvine && $(on "$CA") == A ]] || fail "prefix+S: B=$(on "$CB") A=$(on "$CA")"
+
+press "$CA" w "'B:"
+[[ $(on "$CA") == B && $(on "$CB") == Projects/Dalvine ]] || fail "prefix+w: A=$(on "$CA") B=$(on "$CB")"
+
+press "$CB" s "'A"
+[[ $(on "$CB") == A && $(on "$CA") == B ]] || fail "prefix+s: B=$(on "$CB") A=$(on "$CA")"
+
+press "$CA" F 'Dalvine'
+tmux list-windows -t '=B' -F '#W' | grep -qx 'Projects/Dalvine' || fail 'prefix+F: window not in the pressing client'\''s session'
+! tmux list-windows -t '=A' -F '#W' | grep -qx 'Projects/Dalvine' || fail 'prefix+F: window opened in the other client'\''s session'
+
+# A is on session B, B is on session A now
+press "$CB" i '2449'
+tmux list-windows -t '=A' -F '#W' | grep -qx 2449 || fail 'prefix+i: window not in the pressing client'\''s session'
+! tmux list-windows -t '=B' -F '#W' | grep -qx 2449 || fail 'prefix+i: window opened in the other client'\''s session'
+
+press "$CA" H 'needle'
+tmux list-windows -t '=B' -F '#W' | grep -qx huddle || fail 'prefix+H: window not in the pressing client'\''s session'
+! tmux list-windows -t '=A' -F '#W' | grep -qx huddle || fail 'prefix+H: window opened in the other client'\''s session'
+
+printf 'popup client tests passed\n'

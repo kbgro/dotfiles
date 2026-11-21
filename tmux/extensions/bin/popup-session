@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Session of the client that opened the popup ($POPUP_CLIENT, set by the tmux.conf bindings);
+# outside a popup, the current session. Inside a popup `tmux display -p '#S'` can name another
+# client's session, so popup scripts use this instead.
+if [[ -n ${POPUP_CLIENT:-} ]]; then
+    tmux list-clients -F '#{client_name}	#{session_name}' | awk -F '\t' -v c="$POPUP_CLIENT" '$1 == c { print $2; exit }'
+else
+    tmux display -p '#{session_name}'
+fi

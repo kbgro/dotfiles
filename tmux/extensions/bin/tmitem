@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Pick a work item from the nearest items/ folder and work on it in its own window:
+# switches to the window named after the item id, or creates it and starts Claude on the handover.
+# Usage: tmitem   run from prefix+i's popup, which starts in the current pane's folder
+# (display-popup doesn't expand #{...} in its command; the binding passes the client as POPUP_CLIENT)
+set -euo pipefail
+session=$("$(dirname -- "$(readlink -f -- "$0")")/popup-session")
+dir=$PWD
+while [[ $dir != / && ! -d $dir/items ]]; do dir=$(dirname "$dir"); done
+[[ -d $dir/items ]] || { echo "No items/ folder above $PWD"; read -rn1; exit 0; }
+cd "$dir"
+
+item=$(ls items | sort -t- -k1,1nr | fzf --reverse --border --prompt='Items > ' \
+        --preview='for f in items/{}/handover.md items/{}/notes.md; do [[ -f $f ]] && exec cat "$f"; done; ls items/{}' \
+        --preview-window='right:60%:wrap') || exit 0
+id=${item%%-*}
+
+# by index: a numeric name like 2449 would otherwise be read as a window index
+idx=$(tmux list-windows -t "=$session" -F '#{window_index} #{window_name}' | awk -v id="$id" '$2 == id { print $1; exit }')
+if [[ -n $idx ]]; then
+    tmux select-window -t "=$session:$idx"
+    exit 0
+fi
+
+doc=items/$item
+for f in handover.md notes.md; do [[ -f $doc/$f ]] && { doc=$doc/$f; break; }; done
+prompt="review $doc and ask questions first before starting implementation"
+idx=$(tmux new-window -P -F '#{window_index}' -t "=$session:" -n "$id" -c "$dir")
+# typed into the window's shell (not run as the window command), so quitting Claude leaves the window open
+tmux send-keys -t "=$session:$idx" "claude '${prompt//\'/\'\\\'\'}'" Enter

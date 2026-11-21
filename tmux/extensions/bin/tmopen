@@ -8,8 +8,10 @@ declare -A SEEN_PATHS=()
 declare -A SESSION_NAMES=()
 declare -A SESSION_PATHS=()
 CANDIDATE_COUNT=0
+SCRIPT_DIR=$(dirname -- "$(readlink -f -- "$0")")
 GIT_MODE=0
 SESSION_MODE=0
+DEPTH=0 # 0: every level
 PRUNABLE_COUNT=0
 ROOTS_FROM_CONFIG=0
 ICON_BRANCH=''
@@ -24,11 +26,15 @@ C_CLEAN=$'\033[32m'
 
 usage() {
     cat <<'EOF'
-Usage: tmopen [--git] [--session] [--roots ROOT...]
+Usage: tmopen [--git] [--session] [--depth N] [--roots-file NAME] [--roots ROOT...]
 
 Pick a directory or Git worktree and open it inside tmux.
 --git       list Git repositories and worktrees
 --session   switch to or create a session for the selected path
+--depth N   list directories at most N levels below each root, skipping hidden
+            directories and node_modules (directory mode)
+--roots-file NAME
+            read the roots from NAME in the tmux config folder instead of open-roots
 --roots     use the remaining arguments as search roots
 EOF
 }
@@ -134,7 +140,11 @@ discover_directories() {
         [[ -d "$root" ]] || continue
         while IFS= read -r -d '' path; do
             add_candidate "$path" "$path"
-        done < <(find -P "$root" -type d -name .git -prune -o -type d -print0 2>/dev/null)
+        done < <(if ((DEPTH > 0)); then
+            find -P "$root" -mindepth 1 -maxdepth "$DEPTH" \( -name '.*' -o -name node_modules \) -prune -o -type d -print0
+        else
+            find -P "$root" -type d -name .git -prune -o -type d -print0
+        fi 2>/dev/null)
     done
 }
 
@@ -212,7 +222,7 @@ load_sessions() {
         [[ -n "$name" ]] || continue
         SESSION_NAMES["$name"]=$path
         SESSION_PATHS["$path"]=$name
-    done < <(tmux list-sessions -F '#{session_name}\t#{session_path}' 2>/dev/null || true)
+    done < <(tmux list-sessions -F $'#{session_name}\t#{session_path}' 2>/dev/null || true)
 }
 
 session_for_path() {
@@ -259,14 +269,15 @@ open_selected() {
     load_sessions
     if ((SESSION_MODE)); then
         if existing=$(session_for_path "$path"); then
-            tmux switch-client -t "$existing"
+            tmux switch-client ${POPUP_CLIENT:+-c "$POPUP_CLIENT"} -t "$existing"
             return
         fi
         name=$(unique_session_name "$path")
         tmux new-session -d -s "$name" -c "$path"
-        tmux switch-client -t "$name"
+        tmux switch-client ${POPUP_CLIENT:+-c "$POPUP_CLIENT"} -t "$name"
     else
-        tmux new-window -n "$name" -c "$path"
+        # in a popup, a bare new-window can land in another client's session
+        tmux new-window -t "=$("${SCRIPT_DIR}/popup-session"):" -n "$name" -c "$path"
     fi
 }
 
@@ -284,6 +295,17 @@ main() {
         case "$arg" in
             --git) GIT_MODE=1 ;;
             --session) SESSION_MODE=1 ;;
+            --depth)
+                shift
+                [[ ${1:-} =~ ^[0-9]+$ ]] || die '--depth requires a number'
+                DEPTH=$1
+                ;;
+            --roots-file)
+                shift
+                [[ -n ${1:-} ]] || die '--roots-file requires a file name'
+                ROOTS_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/tmux/$1"
+                [[ -f "$ROOTS_FILE" ]] || die "roots file not found: $ROOTS_FILE"
+                ;;
             --roots)
                 shift
                 (($# > 0)) || die '--roots requires at least one path'
@@ -299,6 +321,8 @@ main() {
     load_roots
     if ((GIT_MODE)); then
         FZF_PROMPT='Git worktrees > '
+    elif ((SESSION_MODE)); then
+        FZF_PROMPT='Session in > '
     else
         FZF_PROMPT='Directories > '
     fi

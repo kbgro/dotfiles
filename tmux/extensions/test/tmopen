@@ -47,7 +47,11 @@ cat > "$WORK/bin/tmux" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$TMOPEN_TEST_LOG"
 case "${1:-}" in
-    list-sessions) printf '%s\n' "${TMOPEN_TEST_SESSIONS:-}" ;;
+    list-sessions)
+        # real tmux doesn't turn a literal \t in -F into a tab; fail like the real thing would
+        [[ "$*" == *$'\t'* ]] || { echo 'fake tmux: -F format has no real tab' >&2; exit 1; }
+        printf '%s\n' "${TMOPEN_TEST_SESSIONS:-}" ;;
+    display) echo cur ;; # session of the popup / current pane
     new-window|new-session|switch-client) ;;
 esac
 EOF
@@ -62,13 +66,13 @@ printf '%s\n' "$WORK/projects" > "$XDG_CONFIG_HOME/tmux/open-roots"
 EXPECTED_NAME="$(basename "$(dirname "$WORK/projects")")/projects"
 
 TMOPEN_TEST_ID=0 "$SCRIPT" >"$WORK/output" 2>&1
-assert_contains "$WORK/tmux.log" "new-window -n $EXPECTED_NAME -c $WORK/projects"
+assert_contains "$WORK/tmux.log" "new-window -t =cur: -n $EXPECTED_NAME -c $WORK/projects"
 
 : > "$WORK/tmux.log"
 printf '%s\n' '~/projects' > "$XDG_CONFIG_HOME/tmux/open-roots"
 HOME="$WORK/home" TMOPEN_TEST_MATCH="$WORK/home/projects" \
     "$SCRIPT" >"$WORK/output" 2>&1
-assert_contains "$WORK/tmux.log" "new-window -n home/projects -c $WORK/home/projects"
+assert_contains "$WORK/tmux.log" "new-window -t =cur: -n home/projects -c $WORK/home/projects"
 printf '%s\n' "$WORK/projects" > "$XDG_CONFIG_HOME/tmux/open-roots"
 
 : > "$WORK/tmux.log"
@@ -76,27 +80,27 @@ printf '%s\n' '~/missing' > "$XDG_CONFIG_HOME/tmux/open-roots"
 FALLBACK_NAME="$(basename "$(dirname "$WORK/home")")/home"
 HOME="$WORK/home" TMOPEN_TEST_MATCH="$WORK/home" \
     "$SCRIPT" >"$WORK/output" 2>&1
-assert_contains "$WORK/tmux.log" "new-window -n $FALLBACK_NAME -c $WORK/home"
+assert_contains "$WORK/tmux.log" "new-window -t =cur: -n $FALLBACK_NAME -c $WORK/home"
 printf '%s\n' "$WORK/projects" > "$XDG_CONFIG_HOME/tmux/open-roots"
 
 : > "$WORK/tmux.log"
 TMOPEN_TEST_MATCH="$WORK/one/x/repo" "$SCRIPT" --roots "$WORK/one" >"$WORK/output" 2>&1
 TMOPEN_TEST_MATCH="$WORK/two/x/repo" "$SCRIPT" --roots "$WORK/two" >"$WORK/output" 2>&1
-assert_contains "$WORK/tmux.log" "new-window -n x/repo -c $WORK/one/x/repo"
-assert_contains "$WORK/tmux.log" "new-window -n x/repo -c $WORK/two/x/repo"
+assert_contains "$WORK/tmux.log" "new-window -t =cur: -n x/repo -c $WORK/one/x/repo"
+assert_contains "$WORK/tmux.log" "new-window -t =cur: -n x/repo -c $WORK/two/x/repo"
 
 : > "$WORK/tmux.log"
 export TMOPEN_TEST_CANDIDATES="$WORK/candidates.log"
 TMOPEN_TEST_MATCH="$WORK/projects/payment/feature auth" \
     "$SCRIPT" --git >"$WORK/output" 2>&1
-assert_contains "$WORK/tmux.log" "new-window -n payment/feature auth -c $WORK/projects/payment/feature auth"
+assert_contains "$WORK/tmux.log" "new-window -t =cur: -n payment/feature auth -c $WORK/projects/payment/feature auth"
 assert_contains "$WORK/candidates.log" ' feature-auth'
 assert_contains "$WORK/candidates.log" '●'
 
 : > "$WORK/tmux.log"
 TMOPEN_TEST_MATCH="$WORK/projects/payment/repo" \
     "$SCRIPT" --git --roots "$WORK/projects/payment" >"$WORK/output" 2>&1
-assert_contains "$WORK/tmux.log" "new-window -n payment/repo -c $WORK/projects/payment/repo"
+assert_contains "$WORK/tmux.log" "new-window -t =cur: -n payment/repo -c $WORK/projects/payment/repo"
 
 : > "$WORK/tmux.log"
 TMOPEN_TEST_SESSIONS="$EXPECTED_NAME"$'\t'"$WORK/projects/payment" \
@@ -119,5 +123,27 @@ if env -u TMUX "$SCRIPT" >"$WORK/output" 2>&1; then
     fail 'outside-tmux invocation unexpectedly succeeded'
 fi
 assert_contains "$WORK/output" 'must be run inside tmux'
+
+# --depth: only N levels, no hidden folders or node_modules, root itself not listed
+mkdir -p "$WORK/deep/app/src/deeper" "$WORK/deep/app/node_modules/x" "$WORK/deep/.cache/y"
+: > "$WORK/tmux.log"; : > "$WORK/candidates"
+TMOPEN_TEST_CANDIDATES="$WORK/candidates" TMOPEN_TEST_MATCH=no-such-dir \
+    "$SCRIPT" --session --depth 2 --roots "$WORK/deep" >"$WORK/output" 2>&1 || true
+assert_contains "$WORK/candidates" "$WORK/deep/app"
+assert_contains "$WORK/candidates" "$WORK/deep/app/src"
+! grep -qE "deeper|node_modules|\.cache|	$WORK/deep\$" "$WORK/candidates" || fail '--depth listed too much'
+
+: > "$WORK/tmux.log"
+TMOPEN_TEST_MATCH="$WORK/deep/app/src" "$SCRIPT" --session --depth 2 --roots "$WORK/deep" >"$WORK/output" 2>&1
+assert_contains "$WORK/tmux.log" "new-session -d -s app/src -c $WORK/deep/app/src"
+assert_contains "$WORK/tmux.log" "switch-client -t app/src"
+
+# --roots-file: the roots come from that file in the config folder, not open-roots
+printf '%s\n' "$WORK/deep" > "$XDG_CONFIG_HOME/tmux/session-roots"
+: > "$WORK/tmux.log"
+TMOPEN_TEST_MATCH="$WORK/deep/app" "$SCRIPT" --session --depth 2 --roots-file session-roots >"$WORK/output" 2>&1
+assert_contains "$WORK/tmux.log" "new-session -d -s deep/app -c $WORK/deep/app"
+! "$SCRIPT" --roots-file no-such-file >"$WORK/output" 2>&1 || fail '--roots-file accepted a missing file'
+assert_contains "$WORK/output" 'roots file not found'
 
 printf 'tmopen tests passed\n'

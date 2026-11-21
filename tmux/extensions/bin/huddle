@@ -3,7 +3,12 @@
 #   huddle search   live ripgrep + fzf over all notes; Enter opens the line in nvim in a new window
 #   huddle today    today's note rendered with glow (falls back to the latest note)
 set -euo pipefail
-dir=${HUDDLE_DIR:-$HOME/work/Huddle}
+# The notes folder: HUDDLE_DIR, else the one line in the tmux config folder's huddle-dir.
+conf="${XDG_CONFIG_HOME:-$HOME/.config}/tmux/huddle-dir"
+dir=${HUDDLE_DIR:-}
+[[ -z $dir && -f $conf ]] && dir=$(sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d' "$conf" | head -1)
+dir=${dir/#\~/$HOME}
+[[ -n $dir && -d $dir ]] || { echo "huddle: set the notes folder in $conf (or HUDDLE_DIR)" >&2; exit 1; }
 
 # Notes/DD.MM.YY/today.md, newest by date (folder names don't sort as dates)
 latest_note() {
@@ -25,7 +30,8 @@ search)
             --preview-window='right:55%:+{2}-/2' \
         < /dev/null) || exit 0
     file=${sel%%:*}; rest=${sel#*:}; line=${rest%%:*}
-    tmux new-window -n huddle -c "$dir" "nvim +$line $(printf '%q' "$file")"
+    # in a popup, a bare new-window can land in another client's session
+    tmux new-window -t "=$("$(dirname -- "$(readlink -f -- "$0")")/popup-session"):" -n huddle -c "$dir" "nvim +$line $(printf '%q' "$file")"
     ;;
 today)
     note="$dir/Notes/$(date +%d.%m.%y)/today.md"

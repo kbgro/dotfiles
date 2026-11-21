@@ -17,6 +17,7 @@ tmopen
 tmopen --git
 tmopen --session
 tmopen --git --session
+tmopen --session --depth 2 --roots-file session-roots   # prefix+S
 tmopen --roots ~/projects ~/dotfiles
 ```
 
@@ -25,7 +26,13 @@ information. It does not modify Git state.
 
 Search roots are read from `${XDG_CONFIG_HOME:-$HOME/.config}/tmux/open-roots`,
 one path per line. Blank lines and lines beginning with `#` are ignored. If the
-file is absent or empty, `$HOME` is used.
+file is absent or empty, `$HOME` is used. `--roots-file NAME` reads another file
+in the same folder instead (prefix+S uses `session-roots`). No folder path is
+written in `tmux.conf` or the scripts: they live only in these files.
+
+`prefix+S` switches to the session for a folder up to two levels under
+a root in `session-roots`, or creates one named `parent/folder` like `tmh`.
+`--depth` skips hidden folders and `node_modules`.
 
 The tmux bindings are `prefix+F` for directories and `prefix+G` for Git
 repositories/worktrees. `prefix+P` opens active Azure DevOps pull requests
@@ -71,9 +78,20 @@ Test: `tmux/extensions/test/tmsave` (uses its own tmux server).
 
 ### Huddle notes
 
-`huddle` works on `~/work/Huddle` (override with `HUDDLE_DIR`).
+`huddle` works on the folder in `${XDG_CONFIG_HOME:-$HOME/.config}/tmux/huddle-dir`
+(override with `HUDDLE_DIR`).
 
 * `prefix+H` searches every note as you type (ripgrep, smart case) with a
   preview; Enter opens the line in nvim in a new `huddle` window.
 * `prefix+T` shows today's note (`Notes/DD.MM.YY/today.md`) rendered with glow,
   or the latest note if today's doesn't exist yet. `q` closes it.
+
+### Work items
+
+`prefix+i` lists the folders in the nearest `items/` directory above the
+current pane (newest id first, previewing `handover.md` or `notes.md`). Enter
+switches to the window named after the item id (e.g. `2449`) if it exists;
+otherwise it opens one in the folder that holds `items/` and types
+`claude 'review items/<item>/handover.md and ask questions first before
+starting implementation'` into its shell, so quitting Claude leaves the window
+open. The default `prefix+i` (window info) is replaced.

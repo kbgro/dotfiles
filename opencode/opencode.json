@@ -1,5 +1,37 @@
 {
     "$schema": "https://opencode.ai/config.json",
+    "providers": {
+        "vast": {
+            "name": "Vast llama.cpp",
+            "package": "@opencode/ai/providers/openai-compatible",
+            "settings": {
+                "baseURL": "http://127.0.0.1:8080/v1"
+            },
+            "body": {
+                "chat_template_kwargs": {
+                    "enable_thinking": false
+                }
+            },
+            "models": {
+                "fable-27b": {
+                    "name": "Fable 27B (262K Q4 KV)",
+                    "capabilities": {
+                        "tools": true,
+                        "input": [
+                            "text"
+                        ],
+                        "output": [
+                            "text"
+                        ]
+                    },
+                    "limit": {
+                        "context": 262144,
+                        "output": 8192
+                    }
+                }
+            }
+        }
+    },
     "permission": {
         "edit": "ask",
         "bash": {
